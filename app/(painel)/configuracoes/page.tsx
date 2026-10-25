@@ -77,11 +77,12 @@ function WhatsAppCard() {
 }
 
 function BlingCard() {
-  const [status, setStatus] = useState<{ configured: boolean; connected: boolean } | null>(null);
+  type EnvStatus = { client_id: string; client_secret: string; names: string[] };
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean; env?: EnvStatus } | null>(null);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    api<{ configured: boolean; connected: boolean }>("/api/bling").then(setStatus).catch((e) => setNotice(e.message));
+    api<{ configured: boolean; connected: boolean; env?: EnvStatus }>("/api/bling").then(setStatus).catch((e) => setNotice(e.message));
     const result = new URLSearchParams(window.location.search).get("bling");
     if (result === "ok") setNotice("Bling conectado com sucesso.");
     if (result === "erro") setNotice("Não foi possível conectar ao Bling. Tente de novo.");
@@ -103,7 +104,16 @@ function BlingCard() {
         {notice && <span style={{ display: "block", color: notice.includes("sucesso") ? "var(--brand)" : "crimson" }}>{notice}</span>}
       </p>
       {status && !status.configured && (
-        <p className="muted">Falta cadastrar o app do Bling no servidor (BLING_CLIENT_ID e BLING_CLIENT_SECRET).</p>
+        <div className="muted">
+          <p>Falta cadastrar o app do Bling no servidor (BLING_CLIENT_ID e BLING_CLIENT_SECRET).</p>
+          {status.env && (
+            <p>
+              Client Id: {status.env.client_id} · Client Secret: {status.env.client_secret}
+              <br />
+              Variáveis com &quot;BLING&quot; no servidor: {status.env.names.length ? status.env.names.join(", ") : "nenhuma"}
+            </p>
+          )}
+        </div>
       )}
       {status?.configured && !status.connected && (
         <a href="/api/bling/connect"><button className="primary">Conectar ao Bling</button></a>
