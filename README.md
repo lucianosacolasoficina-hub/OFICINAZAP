@@ -90,8 +90,7 @@ No celular: WhatsApp > Aparelhos conectados > Conectar aparelho > leia o QR Code
 
 1. No Supabase, rode `supabase/migrations/003_bling.sql` no **SQL Editor**.
 2. No Bling, abra **Central de Extensões > Área do Integrador > Criar aplicativo** (tipo "Aplicativo próprio"/privado). Em **Link de redirecionamento**, coloque `https://SEU-SISTEMA/api/bling/callback`. Marque os escopos de **Contatos** e **Pedidos de Venda**.
-3. Copie o **Client Id** e o **Client Secret** do app para `BLING_CLIENT_ID` e `BLING_CLIENT_SECRET` (no Render: serviço oficinazap > Environment).
-4. No OficinaZap, vá em **Configurações > Conectar ao Bling** e autorize com seu login do Bling.
+3. No OficinaZap, vá em **Configurações > Bling**, cole o **Client Id** e o **Client Secret** do app e clique em **Salvar e conectar ao Bling**. Autorize com seu login do Bling. (Também dá para usar as variáveis `BLING_CLIENT_ID` e `BLING_CLIENT_SECRET` no servidor.)
 
 ## Próximas fases
 
