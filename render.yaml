@@ -1,0 +1,76 @@
+# Publicação no Render com um clique (Blueprint).
+# Cria o painel (Next.js), a Evolution API (WhatsApp por QR Code) e o banco da Evolution.
+# Os valores marcados com sync: false são pedidos na tela do Render ao publicar.
+services:
+  - type: web
+    name: oficinazap
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://kpiwkuffrfwububxgsph.supabase.co
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtwaXdrdWZmcmZ3dWJ1Ynhnc3BoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MTkxMTAsImV4cCI6MjEwODQ5NTExMH0.Ch8uPTgSEI_P1Mpe24-j5cnKKcFQLMu39EDVl4eYcts
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-opus-5-5
+      - key: WHATSAPP_PROVIDER
+        value: evolution
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: EVOLUTION_INSTANCE
+        value: oficina
+      - key: EVOLUTION_API_URL
+        fromService:
+          type: web
+          name: oficinazap-evolution
+          property: hostport
+      - key: EVOLUTION_API_KEY
+        fromService:
+          type: web
+          name: oficinazap-evolution
+          envVarKey: AUTHENTICATION_API_KEY
+
+  - type: web
+    name: oficinazap-evolution
+    runtime: image
+    image:
+      url: docker.io/evoapicloud/evolution-api:latest
+    plan: starter
+    region: virginia
+    disk:
+      name: evolution-instances
+      mountPath: /evolution/instances
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: SERVER_PORT
+        value: "8080"
+      - key: AUTHENTICATION_API_KEY
+        generateValue: true
+      - key: DATABASE_ENABLED
+        value: "true"
+      - key: DATABASE_PROVIDER
+        value: postgresql
+      - key: DATABASE_CONNECTION_URI
+        fromDatabase:
+          name: oficinazap-evolution-db
+          property: connectionString
+      - key: CACHE_REDIS_ENABLED
+        value: "false"
+      - key: CACHE_LOCAL_ENABLED
+        value: "true"
+
+databases:
+  - name: oficinazap-evolution-db
+    plan: basic-256mb
+    region: virginia
+    databaseName: evolution
+    user: evolution
