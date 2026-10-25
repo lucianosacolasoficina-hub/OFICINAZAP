@@ -14,6 +14,7 @@ import {
   updateConversation,
   type Message,
   upsertContact,
+  upsertGroup,
 } from "./db";
 import { loadMedia, saveMedia } from "./media";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
@@ -26,8 +27,9 @@ export async function handleIncoming(msg: IncomingMessage) {
   // Com vários números, a conversa fica ligada ao número que recebeu a mensagem e a resposta sai por ele.
   const connection = msg.instance ? await connectionByInstance(msg.instance) : null;
   const instance = connection?.instance ?? msg.instance;
-  const contact = await upsertContact(msg.phone, msg.name);
-  const conversation = await activeConversation(contact.id, botEnabled, connection);
+  const contact = msg.isGroup ? await groupContact(msg.phone, instance) : await upsertContact(msg.phone, msg.name);
+  // A IA não responde em grupos: a conversa já abre esperando um atendente.
+  const conversation = await activeConversation(contact.id, botEnabled && !msg.isGroup, connection);
 
   const saved = await addMessage(conversation.id, {
     direction: "in",
@@ -92,6 +94,16 @@ export async function handleIncoming(msg: IncomingMessage) {
       body: `IA transferiu para atendimento humano: ${result.handoff}`,
     });
   }
+}
+
+/** Contato do grupo; na primeira mensagem busca o nome do grupo no WhatsApp. */
+async function groupContact(groupId: string, instance?: string) {
+  const contact = await upsertGroup(groupId);
+  if (contact.name) return contact;
+  const name = await whatsapp(instance)
+    .groupName?.(groupId)
+    .catch(() => null);
+  return name ? upsertGroup(groupId, name) : contact;
 }
 
 /** Carrega as últimas imagens do cliente para a IA poder vê-las. */

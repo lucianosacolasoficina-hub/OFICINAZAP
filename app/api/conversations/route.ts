@@ -1,31 +1,37 @@
-import { route } from "@/lib/api";
+import { HttpError, route } from "@/lib/api";
+import { getConnection } from "@/lib/connections";
+import { activeConversation, updateConversation, upsertContact } from "@/lib/db";
+import { applyFilter, CONVERSATION_SELECT, loadLookups, parseFilter } from "@/lib/inbox";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async (req, _ctx, userId) => {
-  const params = new URL(req.url).searchParams;
-  const status = params.get("status");
-  const department = params.get("department");
-  const db = supabaseAdmin();
-  let query = db
+  const filter = parseFilter(new URL(req.url).searchParams);
+  const lookups = await loadLookups(userId, filter.stage ? [filter.stage] : [], filter.search);
+  const query = supabaseAdmin()
     .from("conversations")
-    .select("*, contact:contacts(*), department:departments(id, name, color)")
+    .select(CONVERSATION_SELECT)
     .order("last_message_at", { ascending: false })
     .limit(200);
-  if (status === "active") query = query.neq("status", "closed");
-  else if (status) query = query.eq("status", status);
-
-  if (department === "none") query = query.is("department_id", null);
-  else if (department === "mine") {
-    // Conversas dos departamentos do atendente logado, mais as que ele mesmo está atendendo.
-    const { data: mine, error } = await db.from("department_agents").select("department_id").eq("agent_id", userId);
-    if (error) throw new Error(error.message);
-    const ids = mine.map((m) => m.department_id);
-    query = ids.length
-      ? query.or(`department_id.in.(${ids.join(",")}),assigned_to.eq.${userId}`)
-      : query.eq("assigned_to", userId);
-  } else if (department) query = query.eq("department_id", department);
-
-  const { data, error } = await query;
+  const { data, error } = await applyFilter(query, filter, userId, lookups);
   if (error) throw new Error(error.message);
   return data;
+});
+
+// Nova conversa iniciada pelo atendente (botão +). A primeira mensagem é enviada depois, pelo chat.
+export const POST = route(async (req, _ctx, userId) => {
+  const body = (await req.json()) as { phone?: string; name?: string; connection_id?: string | null };
+  let phone = (body.phone ?? "").replace(/\D/g, "");
+  // Número brasileiro digitado só com DDD: coloca o 55 na frente.
+  if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
+  if (phone.length < 12 || phone.length > 15) throw new HttpError(400, "telefone inválido: use DDD + número");
+
+  const connection = body.connection_id ? await getConnection(body.connection_id) : null;
+  if (body.connection_id && !connection) throw new HttpError(404, "número de WhatsApp não encontrado");
+
+  const contact = await upsertContact(phone, body.name?.trim() || undefined);
+  const conversation = await activeConversation(contact.id, false, connection);
+  if (conversation.status !== "open" || conversation.assigned_to !== userId) {
+    await updateConversation(conversation.id, { status: "open", assigned_to: userId });
+  }
+  return { id: conversation.id };
 });

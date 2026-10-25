@@ -1,37 +1,137 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, formatPhone, formatTime, STATUS_LABEL } from "@/lib/client";
+import { Icon } from "@/components/Icon";
+import {
+  api,
+  avatarColor,
+  formatListTime,
+  formatPhone,
+  formatPreview,
+  formatSince,
+  formatTime,
+  initials,
+  STATUS_LABEL,
+} from "@/lib/client";
 import type { Contact, Conversation, ConversationStatus, Department, Message, QuoteData } from "@/lib/db";
+import { STAGES } from "@/lib/stages";
 
 type DeptTag = Pick<Department, "id" | "name" | "color">;
-type ConvRow = Conversation & { contact: Contact; department: DeptTag | null };
+type ConvRow = Conversation & {
+  contact: Contact;
+  department: DeptTag | null;
+  agent: { id: string; name: string } | null;
+};
 type Detail = { conversation: ConvRow; messages: Message[]; quote: QuoteData | null };
 type QuickReply = { id: string; shortcut: string; body: string };
+type Summary = {
+  views: Record<string, number>;
+  queues: Record<string, number>;
+  stages: Record<string, number>;
+  connections: { id: string; name: string; connected_at: string | null }[];
+  me: string;
+};
 
-const FILTERS: { key: string; label: string }[] = [
-  { key: "active", label: "Ativas" },
-  { key: "waiting", label: "Aguardando" },
-  { key: "open", label: "Em atendimento" },
-  { key: "bot", label: "IA" },
-  { key: "closed", label: "Encerradas" },
+const VIEWS = [
+  { key: "todas", label: "Todas", icon: "chat" },
+  { key: "minhas", label: "Minhas", icon: "user" },
+  { key: "pendentes", label: "Pendentes", icon: "hourglass" },
+  { key: "grupos", label: "Grupos", icon: "users" },
+  { key: "robo", label: "Robô", icon: "bot" },
+  { key: "equipe", label: "Equipe", icon: "team" },
+  { key: "fechadas", label: "Fechadas", icon: "check" },
 ];
 
+const QUEUES = [
+  { key: "todas", label: "Todas", icon: "chat" },
+  { key: "minhas", label: "Minhas", icon: "user" },
+  { key: "departamento", label: "Departamento", icon: "building" },
+  { key: "geral", label: "Geral", icon: "users" },
+];
+
+const STAGE_COLORS: Record<string, string> = {
+  novo: "#6b7280",
+  orcamento: "#2b6cb0",
+  arte: "#6b46c1",
+  fechado: "#128c4a",
+  producao: "#2c7a7b",
+  entregue: "#38a169",
+  perdido: "#c53030",
+};
+
 const POLL_MS = 3000;
+const SUMMARY_MS = 10000;
+/** Acima disso o tempo de espera fica vermelho. */
+const LATE_MIN = 60;
+
+function count(n: number | undefined) {
+  if (n === undefined) return "";
+  return n > 99 ? "+99" : String(n);
+}
+
+/** Guarda preferências simples da tela (seções abertas etc.) no navegador. */
+function usePref<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(initial);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`oz.${key}`);
+      if (saved !== null) setValue(JSON.parse(saved));
+    } catch {}
+  }, [key]);
+  const set = useCallback(
+    (v: T) => {
+      setValue(v);
+      try {
+        localStorage.setItem(`oz.${key}`, JSON.stringify(v));
+      } catch {}
+    },
+    [key],
+  );
+  return [value, set] as const;
+}
 
 export default function InboxPage() {
-  const [filter, setFilter] = useState("active");
+  const [view, setView] = usePref("view", "todas");
+  const [queue, setQueue] = usePref("queue", "todas");
+  const [stage, setStage] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [showFilters, setShowFilters] = usePref("sidebar", true);
+  const [crmOpen, setCrmOpen] = usePref("crmOpen", true);
+  const [queueOpen, setQueueOpen] = usePref("queueOpen", true);
+  const [filterPop, setFilterPop] = useState(false);
+  const [newChat, setNewChat] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [list, setList] = useState<ConvRow[]>([]);
+  const [list, setList] = useState<ConvRow[] | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [, setTick] = useState(0);
+
+  // Espera o atendente parar de digitar antes de buscar.
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const params = useMemo(() => {
+    const p = new URLSearchParams({ view, queue });
+    if (stage) p.set("stage", stage);
+    if (deptFilter) p.set("department", deptFilter);
+    return p;
+  }, [view, queue, stage, deptFilter]);
 
   const loadList = useCallback(async () => {
-    const dept = deptFilter ? `&department=${deptFilter}` : "";
-    setList(await api<ConvRow[]>(`/api/conversations?status=${filter}${dept}`));
-  }, [filter, deptFilter]);
+    const p = new URLSearchParams(params);
+    if (query) p.set("q", query);
+    setList(await api<ConvRow[]>(`/api/conversations?${p}`));
+  }, [params, query]);
+
+  const loadSummary = useCallback(async () => {
+    setSummary(await api<Summary>(`/api/conversations/summary?${params}`));
+  }, [params]);
 
   const loadDetail = useCallback(async () => {
     if (selected) setDetail(await api<Detail>(`/api/conversations/${selected}`));
@@ -44,11 +144,23 @@ export default function InboxPage() {
   }, [loadList]);
 
   useEffect(() => {
+    loadSummary().catch(console.error);
+    const t = setInterval(() => loadSummary().catch(console.error), SUMMARY_MS);
+    return () => clearInterval(t);
+  }, [loadSummary]);
+
+  useEffect(() => {
     setDetail(null);
     loadDetail().catch(console.error);
     const t = setInterval(() => loadDetail().catch(console.error), POLL_MS);
     return () => clearInterval(t);
   }, [loadDetail]);
+
+  // Atualiza os tempos de espera a cada minuto, mesmo sem mensagens novas.
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     api<QuickReply[]>("/api/quick-replies").then(setQuickReplies).catch(console.error);
@@ -60,51 +172,152 @@ export default function InboxPage() {
     if (c) setSelected(c);
   }, []);
 
+  // Esc fecha a conversa aberta.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !newChat) setSelected(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [newChat]);
+
+  async function refresh() {
+    await Promise.all([loadDetail(), loadList(), loadSummary()]);
+  }
+
   async function setStatus(status: ConversationStatus) {
     if (!selected) return;
     await api(`/api/conversations/${selected}`, { method: "PATCH", body: JSON.stringify({ status }) });
-    await Promise.all([loadDetail(), loadList()]);
+    await refresh();
   }
 
   async function transfer(departmentId: string | null) {
     if (!selected) return;
     await api(`/api/conversations/${selected}`, { method: "PATCH", body: JSON.stringify({ department_id: departmentId }) });
-    await Promise.all([loadDetail(), loadList()]);
+    await refresh();
   }
+
+  const extraFilters = (deptFilter ? 1 : 0) + (stage ? 1 : 0);
 
   return (
     <div className="inbox">
-      <aside className="list">
-        <div className="tabs">
-          {FILTERS.map((f) => (
-            <button key={f.key} className={filter === f.key ? "on" : ""} onClick={() => setFilter(f.key)}>
-              {f.label}
+      {showFilters && (
+        <aside className="ib-filters">
+          <div className="ib-filters-head">
+            <strong>Chat</strong>
+            <button className="ib-icon-btn" title="Esconder filtros" onClick={() => setShowFilters(false)}>
+              <Icon name="panel" />
             </button>
-          ))}
-          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ marginTop: 4 }}>
-            <option value="">Todos os departamentos</option>
-            <option value="mine">Meus departamentos</option>
-            <option value="none">Sem departamento</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+          </div>
+          <nav className="ib-menu">
+            {VIEWS.map((v) => (
+              <button key={v.key} className={view === v.key ? "on" : ""} onClick={() => setView(v.key)}>
+                <Icon name={v.icon} />
+                <span>{v.label}</span>
+                <span className="n">{v.key === "fechadas" ? "" : count(summary?.views[v.key])}</span>
+              </button>
             ))}
-          </select>
+          </nav>
+
+          <Section title="CRM" open={crmOpen} onToggle={() => setCrmOpen(!crmOpen)}>
+            {STAGES.map((st) => (
+              <button
+                key={st.key}
+                className={stage === st.key ? "on" : ""}
+                onClick={() => setStage(stage === st.key ? "" : st.key)}
+                title={stage === st.key ? "Clique de novo para tirar o filtro" : `Conversas de clientes em "${st.label}"`}
+              >
+                <span className="dot" style={{ background: STAGE_COLORS[st.key], width: 8, height: 8, marginRight: 4 }} />
+                <span>{st.label}</span>
+                <span className="n">{count(summary?.stages[st.key])}</span>
+              </button>
+            ))}
+          </Section>
+
+          <Section title="Fila de atendimento" open={queueOpen} onToggle={() => setQueueOpen(!queueOpen)}>
+            {QUEUES.map((q) => (
+              <button key={q.key} className={queue === q.key ? "on" : ""} onClick={() => setQueue(q.key)}>
+                <Icon name={q.icon} />
+                <span>{q.label}</span>
+                <span className="n">{count(summary?.queues[q.key])}</span>
+              </button>
+            ))}
+          </Section>
+        </aside>
+      )}
+
+      <aside className="list">
+        <div className="ib-search">
+          {!showFilters && (
+            <button className="ib-icon-btn" title="Mostrar filtros" onClick={() => setShowFilters(true)}>
+              <Icon name="panel" />
+            </button>
+          )}
+          <label className="ib-search-box">
+            <Icon name="search" size={16} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar..." />
+            {search && (
+              <button className="ib-icon-btn" title="Limpar" onClick={() => setSearch("")}>
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </label>
+          <div style={{ position: "relative" }}>
+            <button
+              className={`ib-icon-btn ${extraFilters ? "active" : ""}`}
+              title="Filtrar por departamento"
+              onClick={() => setFilterPop(!filterPop)}
+            >
+              <Icon name="filter" />
+              {extraFilters > 0 && <span className="ib-pip">{extraFilters}</span>}
+            </button>
+            {filterPop && (
+              <div className="ib-pop">
+                <label>
+                  Departamento
+                  <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+                    <option value="">Todos</option>
+                    <option value="none">Sem departamento</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Etapa do CRM
+                  <select value={stage} onChange={(e) => setStage(e.target.value)}>
+                    <option value="">Todas</option>
+                    {STAGES.map((st) => (
+                      <option key={st.key} value={st.key}>{st.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <button
+                    onClick={() => {
+                      setDeptFilter("");
+                      setStage("");
+                    }}
+                  >
+                    Limpar
+                  </button>
+                  <button className="primary" onClick={() => setFilterPop(false)}>OK</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <button className="ib-icon-btn" title="Nova conversa" onClick={() => setNewChat(true)}>
+            <Icon name="plus" />
+          </button>
         </div>
+
         <div className="items">
-          {list.length === 0 && <p className="muted" style={{ padding: 16 }}>Nenhuma conversa aqui.</p>}
-          {list.map((c) => (
-            <div key={c.id} className={`item ${selected === c.id ? "on" : ""}`} onClick={() => setSelected(c.id)}>
-              <span className="name">
-                {c.contact.name || formatPhone(c.contact.phone)}
-                {c.unread_count > 0 && <span className="unread">{c.unread_count}</span>}
-              </span>
-              <span className="time">{formatTime(c.last_message_at)}</span>
-              <span className="preview">{c.last_message_preview}</span>
-              <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
-              {c.department && (
-                <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span>
-              )}
-            </div>
+          {list === null && <p className="muted" style={{ padding: 16 }}>Carregando...</p>}
+          {list?.length === 0 && (
+            <p className="muted" style={{ padding: 16 }}>{query ? `Nada encontrado para "${query}".` : "Nenhuma conversa aqui."}</p>
+          )}
+          {list?.map((c) => (
+            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} />
           ))}
         </div>
       </aside>
@@ -117,13 +330,192 @@ export default function InboxPage() {
             departments={departments}
             onStatus={setStatus}
             onTransfer={transfer}
-            onSent={loadDetail}
+            onSent={refresh}
           />
           <ContactSide detail={detail} onChange={loadDetail} />
         </>
+      ) : selected ? (
+        <div className="empty">Carregando...</div>
       ) : (
-        <div className="empty">{selected ? "Carregando..." : "Escolha uma conversa"}</div>
+        <div className="empty">
+          <div className="ib-empty">
+            <Icon name="chat" size={72} />
+            <h2>Nenhuma conversa selecionada</h2>
+            <p className="muted">Selecione uma conversa na lista para visualizar o atendimento.</p>
+          </div>
+        </div>
       )}
+
+      {newChat && (
+        <NewChatModal
+          connections={summary?.connections ?? []}
+          onClose={() => setNewChat(false)}
+          onCreated={async (id) => {
+            setNewChat(false);
+            setSelected(id);
+            await Promise.all([loadList(), loadSummary()]);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="ib-section">
+      <button className="ib-section-head" onClick={onToggle}>
+        {title}
+        <span style={{ transform: open ? "rotate(180deg)" : undefined, display: "inline-flex" }}>
+          <Icon name="chevron" size={14} />
+        </span>
+      </button>
+      {open && <nav className="ib-menu">{children}</nav>}
+    </div>
+  );
+}
+
+function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: number }) {
+  return (
+    <span className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
+      {initials(name)}
+    </span>
+  );
+}
+
+function ConversationItem({ c, me, on, onClick }: { c: ConvRow; me?: string; on: boolean; onClick: () => void }) {
+  const name = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
+  const waiting = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
+  const late = waiting && Date.now() - new Date(waiting).getTime() > LATE_MIN * 60_000;
+  return (
+    <div className={`ib-item ${on ? "on" : ""} ${c.unread_count > 0 ? "has-unread" : ""}`} onClick={onClick}>
+      <Avatar id={c.contact.id} name={name} />
+      <div className="ib-item-body">
+        <div className="ib-line">
+          <span className="name">{name}</span>
+          <span className="time">{formatListTime(c.last_message_at)}</span>
+          {c.unread_count > 0 && <span className="ib-unread">{c.unread_count > 99 ? "99+" : c.unread_count}</span>}
+        </div>
+        <div className="preview">{formatPreview(c.last_message_preview) || " "}</div>
+        <div className="ib-line ib-tags">
+          {c.department ? (
+            <span className="ib-dept">
+              <span className="dot" style={{ background: c.department.color, width: 7, height: 7, marginRight: 4 }} />
+              {c.department.name}
+            </span>
+          ) : (
+            <span />
+          )}
+          <span className="ib-right">
+            {waiting && (
+              <span className={`ib-wait ${late ? "late" : ""}`} title="Tempo esperando resposta">
+                <Icon name="hourglass" size={12} />
+                {formatSince(waiting)}
+              </span>
+            )}
+            {c.status === "bot" && (
+              <span className="ib-chip" title="A IA está atendendo">
+                <Icon name="bot" size={12} /> Robô
+              </span>
+            )}
+            {c.status === "closed" && <span className="ib-chip">Fechada</span>}
+            {c.contact.is_group && (
+              <span className="ib-chip" title="Grupo">
+                <Icon name="users" size={13} />
+              </span>
+            )}
+            {c.agent && (
+              <span title={`Atendente: ${c.agent.name}${c.agent.id === me ? " (você)" : ""}`}>
+                <Avatar id={c.agent.id} name={c.agent.name} size={22} />
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewChatModal({
+  connections,
+  onClose,
+  onCreated,
+}: {
+  connections: Summary["connections"];
+  onClose: () => void;
+  onCreated: (id: string) => Promise<void>;
+}) {
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [connectionId, setConnectionId] = useState(connections.find((c) => c.connected_at)?.id ?? connections[0]?.id ?? "");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function start(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const { id } = await api<{ id: string }>("/api/conversations", {
+        method: "POST",
+        body: JSON.stringify({ phone, name, connection_id: connectionId || null }),
+      });
+      if (message.trim()) {
+        await api(`/api/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ body: message.trim() }) });
+      }
+      await onCreated(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao iniciar conversa");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={start}>
+        <h3 style={{ margin: 0 }}>Nova conversa</h3>
+        <label>
+          WhatsApp do cliente (com DDD)
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-8888" autoFocus required />
+        </label>
+        <label>
+          Nome (opcional)
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        {connections.length > 1 && (
+          <label>
+            Enviar pelo número
+            <select value={connectionId} onChange={(e) => setConnectionId(e.target.value)}>
+              {connections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.connected_at ? "" : " (desconectado)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          Primeira mensagem
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Olá! Aqui é da Sacolas Oficina..." />
+        </label>
+        {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" onClick={onClose}>Cancelar</button>
+          <button className="primary" disabled={busy || !phone.trim()}>{busy ? "Abrindo..." : "Iniciar conversa"}</button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -198,9 +590,11 @@ function Chat({
     <section className="chat">
       <header className="chat-head">
         <div className="who">
-          <strong>{c.contact.name || formatPhone(c.contact.phone)}</strong>
+          <strong>{c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone))}</strong>
           <div className="muted">
-            {formatPhone(c.contact.phone)} · <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
+            {c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone)} ·{" "}
+            <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
+            {c.agent && <> · com {c.agent.name}</>}
             {c.department && (
               <>
                 {" "}· <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span>

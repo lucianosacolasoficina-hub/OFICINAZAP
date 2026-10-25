@@ -8,6 +8,8 @@ export type IncomingMessage = {
   mediaRef?: string;
   /** Instância da Evolution API (qual dos números recebeu a mensagem). */
   instance?: string;
+  /** Mensagem de grupo: "phone" é o id do grupo e "name" é quem escreveu. */
+  isGroup?: boolean;
 };
 
 export type MediaFile = { data: Buffer; mimeType: string };
@@ -20,4 +22,6 @@ export interface WhatsAppProvider {
   sendText(phone: string, text: string): Promise<{ waMessageId?: string }>;
   /** Baixa o arquivo de uma mensagem com mídia. */
   downloadMedia(msg: IncomingMessage): Promise<MediaFile | null>;
+  /** Nome de um grupo (só na conexão por QR Code). */
+  groupName?(groupId: string): Promise<string | null>;
 }
