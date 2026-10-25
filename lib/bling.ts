@@ -10,56 +10,52 @@ const API_URL = "https://api.bling.com.br/Api/v3";
 
 type Tokens = { access_token: string; refresh_token: string; expires_at: number };
 
-/** Nomes das variáveis do Bling cadastradas no servidor (sem os valores). */
-function blingKeys() {
-  return Object.keys(process.env).filter((k) => /BLING/i.test(k));
-}
+type AppKeys = { client_id: string; client_secret: string };
 
 /**
- * Acha a variável aceitando erros de digitação no painel do Render (espaço, ponto, minúsculas,
- * "CLIENTE" no lugar de "CLIENT"...): basta o nome ter BLING e a palavra ID ou SECRET.
+ * Acha a variável do Render aceitando erros de digitação (espaço, ponto, minúsculas...):
+ * basta o nome ter BLING e a palavra ID ou SECRET.
  */
-function findKey(word: "ID" | "SECRET") {
-  const keys = blingKeys();
-  const exact = keys.find((k) => k === `BLING_CLIENT_${word}`);
-  if (exact) return exact;
+function fromEnv(word: "ID" | "SECRET") {
+  const keys = Object.keys(process.env).filter((k) => /BLING/i.test(k));
   const parts = (k: string) => k.toUpperCase().split(/[^A-Z0-9]+/);
-  return keys.find((k) => parts(k).includes(word)) ?? (word === "SECRET" ? keys.find((k) => /SECRE/i.test(k)) : undefined);
-}
-
-function env(word: "ID" | "SECRET") {
-  const key = findKey(word);
+  const key = keys.find((k) => k === `BLING_CLIENT_${word}`) ?? keys.find((k) => parts(k).includes(word));
   return key ? process.env[key]?.trim() || undefined : undefined;
 }
 
-const clientId = () => env("ID");
-const clientSecret = () => env("SECRET");
-
-export function blingConfigured() {
-  return Boolean(clientId() && clientSecret());
+/** Chaves do app do Bling: as coladas em Configurações têm prioridade sobre as do Render. */
+async function appKeys(): Promise<AppKeys | null> {
+  const saved = await getSetting<AppKeys | null>("bling_app", null);
+  if (saved?.client_id && saved.client_secret) return saved;
+  const client_id = fromEnv("ID");
+  const client_secret = fromEnv("SECRET");
+  return client_id && client_secret ? { client_id, client_secret } : null;
 }
 
-/** Diagnóstico para a tela de Configurações: só nomes e se estão preenchidas, nunca os valores. */
-export function blingEnvStatus() {
-  const status = (word: "ID" | "SECRET") => {
-    const key = findKey(word);
-    if (!key) return "não encontrada";
-    return process.env[key]?.trim() ? `ok (${key})` : `vazia (${key})`;
-  };
-  return { client_id: status("ID"), client_secret: status("SECRET"), names: blingKeys() };
+export async function blingConfigured() {
+  return Boolean(await appKeys());
+}
+
+/** Salva as chaves coladas na tela de Configurações (ficam só no servidor). */
+export async function saveAppKeys(client_id: string, client_secret: string) {
+  await setSetting("bling_app", { client_id: client_id.trim(), client_secret: client_secret.trim() });
 }
 
 export async function blingConnected() {
   return Boolean(await getSetting<Tokens | null>("bling_tokens", null));
 }
 
-export function authorizeUrl(state: string) {
-  const params = new URLSearchParams({ response_type: "code", client_id: clientId()!, state });
+export async function authorizeUrl(state: string) {
+  const keys = await appKeys();
+  if (!keys) throw new Error("chaves do Bling não cadastradas");
+  const params = new URLSearchParams({ response_type: "code", client_id: keys.client_id, state });
   return `${AUTHORIZE_URL}?${params}`;
 }
 
 async function requestToken(body: Record<string, string>): Promise<Tokens> {
-  const basic = Buffer.from(`${clientId()}:${clientSecret()}`).toString("base64");
+  const keys = await appKeys();
+  if (!keys) throw new Error("chaves do Bling não cadastradas");
+  const basic = Buffer.from(`${keys.client_id}:${keys.client_secret}`).toString("base64");
   const res = await fetch(`${API_URL}/oauth/token`, {
     method: "POST",
     headers: {

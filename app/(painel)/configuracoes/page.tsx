@@ -77,16 +77,31 @@ function WhatsAppCard() {
 }
 
 function BlingCard() {
-  type EnvStatus = { client_id: string; client_secret: string; names: string[] };
-  const [status, setStatus] = useState<{ configured: boolean; connected: boolean; env?: EnvStatus } | null>(null);
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean } | null>(null);
   const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+
+  const load = () => api<{ configured: boolean; connected: boolean }>("/api/bling").then(setStatus).catch((e) => setNotice(e.message));
 
   useEffect(() => {
-    api<{ configured: boolean; connected: boolean; env?: EnvStatus }>("/api/bling").then(setStatus).catch((e) => setNotice(e.message));
+    load();
     const result = new URLSearchParams(window.location.search).get("bling");
     if (result === "ok") setNotice("Bling conectado com sucesso.");
-    if (result === "erro") setNotice("Não foi possível conectar ao Bling. Tente de novo.");
+    if (result === "erro") setNotice("Não foi possível conectar ao Bling. Confira as chaves e tente de novo.");
   }, []);
+
+  async function saveKeys(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api("/api/bling", { method: "PUT", body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }) });
+      // Chaves salvas: segue direto para o login do Bling.
+      window.location.href = "/api/bling/connect";
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "erro");
+    }
+  }
 
   async function disconnect() {
     if (!confirm("Desconectar o Bling? Os pedidos deixam de ser enviados.")) return;
@@ -94,6 +109,8 @@ function BlingCard() {
     setStatus((s) => s && { ...s, connected: false });
     setNotice("");
   }
+
+  const showForm = status && (editing || !status.configured);
 
   return (
     <div className="card">
@@ -103,25 +120,26 @@ function BlingCard() {
         {" "}Quando um card do funil chega em &quot;Pedido fechado&quot;, o cliente e o pedido de venda são criados no Bling.
         {notice && <span style={{ display: "block", color: notice.includes("sucesso") ? "var(--brand)" : "crimson" }}>{notice}</span>}
       </p>
-      {status && !status.configured && (
-        <div className="muted">
-          <p>Falta cadastrar o app do Bling no servidor (BLING_CLIENT_ID e BLING_CLIENT_SECRET).</p>
-          {status.env && (
-            <p>
-              Client Id: {status.env.client_id} · Client Secret: {status.env.client_secret}
-              <br />
-              Variáveis com &quot;BLING&quot; no servidor: {status.env.names.length ? status.env.names.join(", ") : "nenhuma"}
-            </p>
-          )}
-        </div>
+      {showForm && (
+        <form onSubmit={saveKeys}>
+          <p className="muted">
+            Cole aqui as chaves do aplicativo que você criou no Bling (Central de Extensões &gt; Área do Integrador &gt; seu app &gt; Informações do App).
+          </p>
+          <label>Client Id<input value={clientId} onChange={(e) => setClientId(e.target.value)} required autoComplete="off" /></label>
+          <label>Client Secret<input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required autoComplete="off" /></label>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="primary">Salvar e conectar ao Bling</button>
+            {editing && <button type="button" onClick={() => setEditing(false)}>Cancelar</button>}
+          </div>
+        </form>
       )}
-      {status?.configured && !status.connected && (
-        <a href="/api/bling/connect"><button className="primary">Conectar ao Bling</button></a>
-      )}
-      {status?.connected && (
+      {status?.configured && !editing && (
         <div className="row">
-          <a href="/api/bling/connect"><button>Reconectar</button></a>
-          <button className="danger" onClick={disconnect}>Desconectar</button>
+          <a href="/api/bling/connect">
+            <button className={status.connected ? "" : "primary"}>{status.connected ? "Reconectar" : "Conectar ao Bling"}</button>
+          </a>
+          <button onClick={() => setEditing(true)}>Trocar chaves</button>
+          {status.connected && <button className="danger" onClick={disconnect}>Desconectar</button>}
         </div>
       )}
     </div>
