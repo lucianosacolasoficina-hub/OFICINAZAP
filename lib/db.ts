@@ -105,6 +105,10 @@ export async function addMessage(
   return saved;
 }
 
+export async function setMessageMedia(messageId: string, mediaUrl: string) {
+  check(await supabaseAdmin().from("messages").update({ media_url: mediaUrl }).eq("id", messageId));
+}
+
 export async function recentMessages(conversationId: string, limit = 40): Promise<Message[]> {
   const db = supabaseAdmin();
   const rows = check(

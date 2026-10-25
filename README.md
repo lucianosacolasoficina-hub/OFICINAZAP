@@ -2,13 +2,16 @@
 
 Sistema de atendimento no WhatsApp com IA para a Sacolas Oficina.
 
-## O que já faz (Fase 1)
+## O que já faz
 
 - **Caixa de entrada com vários atendentes:** todas as conversas do WhatsApp num só lugar, com filtros (Aguardando, Em atendimento, IA, Encerradas), contador de não lidas e atualização automática a cada 3 segundos.
 - **IA atendendo 24h:** responde dúvidas usando só as informações da empresa cadastradas em Configurações, coleta os dados do orçamento (produto, quantidade, tamanho, material, cores, arte, prazo, CEP) e passa para um humano quando precisa.
 - **Assumir, devolver para a IA ou encerrar** cada conversa. Quando um atendente responde, a IA para de responder naquela conversa.
 - **Respostas rápidas:** digite `/` no chat para inserir textos prontos.
 - **Contatos com etiquetas** e tela de **orçamentos coletados**.
+- **Funil de vendas (CRM em colunas):** Novo lead, Orçamento enviado, Arte em aprovação, Pedido fechado, Em produção, Entregue e Perdido. Quem pede orçamento entra sozinho em "Novo lead"; é só arrastar os cards e anotar o valor.
+- **Painel** com conversas aguardando, atendimentos do dia, quanto a IA resolve sozinha e o valor vendido no mês.
+- **IA vê imagens:** quando o cliente manda a logo ou uma foto de referência, a IA entende e usa no orçamento. As imagens também aparecem no chat.
 - **Duas formas de conectar o WhatsApp**, trocando uma linha no `.env`:
   - `evolution`: não oficial, por QR Code (use um número secundário, há risco de banimento);
   - `meta`: API oficial do WhatsApp.
@@ -22,7 +25,7 @@ Next.js 15 (TypeScript), Supabase (banco Postgres e login), Claude (IA da Anthro
 ### 1. Banco de dados (Supabase)
 
 1. Crie um projeto grátis em https://supabase.com.
-2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/001_init.sql` e clique em **Run**.
+2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/001_init.sql` e clique em **Run**. Depois faça o mesmo com `supabase/migrations/002_crm.sql`.
 3. Em **Authentication > Users**, clique em **Add user** e crie o login de cada atendente (e-mail e senha).
 4. Em **Project Settings > API**, copie a URL, a `anon key` e a `service_role key` para o `.env`.
 
@@ -84,5 +87,5 @@ No celular: WhatsApp > Aparelhos conectados > Conectar aparelho > leia o QR Code
 
 ## Próximas fases
 
-- Funil de vendas (CRM em colunas), transcrição de áudios, leitura de imagens (logo do cliente), follow-up automático, integração com o Bling, painel de números.
+- Transcrição de áudios, follow-up automático para orçamentos sem resposta, integração com o Bling.
 - Campanhas, Instagram, agendamento de mensagens e relatórios.

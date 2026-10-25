@@ -1,4 +1,4 @@
-import type { IncomingMessage, WhatsAppProvider } from "./types";
+import type { IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // Conexão não oficial via Evolution API (QR Code). Use num número secundário:
 // o WhatsApp pode banir números conectados dessa forma.
@@ -59,7 +59,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     else if (message.stickerMessage) mediaType = "sticker";
     if (!text && message.documentMessage?.fileName) text = message.documentMessage.fileName;
 
-    return [{ waMessageId: key.id, phone: jid.split("@")[0], name: pushName, text, mediaType }];
+    return [
+      { waMessageId: key.id, phone: jid.split("@")[0], name: pushName, text, mediaType, mediaRef: mediaType && key.id },
+    ];
   }
 
   async sendText(phone: string, text: string) {
@@ -71,5 +73,18 @@ export class EvolutionProvider implements WhatsAppProvider {
     if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { key?: { id?: string } };
     return { waMessageId: data.key?.id };
+  }
+
+  async downloadMedia(msg: IncomingMessage): Promise<MediaFile | null> {
+    if (!msg.mediaRef) return null;
+    const res = await fetch(`${this.baseUrl}/chat/getBase64FromMediaMessage/${this.instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: this.apiKey },
+      body: JSON.stringify({ message: { key: { id: msg.mediaRef } }, convertToMp4: false }),
+    });
+    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { base64?: string; mimetype?: string };
+    if (!data.base64) return null;
+    return { data: Buffer.from(data.base64, "base64"), mimeType: data.mimetype?.split(";")[0] || "application/octet-stream" };
   }
 }

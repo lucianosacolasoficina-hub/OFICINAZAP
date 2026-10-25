@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { IncomingMessage, WhatsAppProvider } from "./types";
+import type { IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // API oficial do WhatsApp (Meta Cloud API).
 type MetaWebhook = {
@@ -12,9 +12,11 @@ type MetaWebhook = {
           from: string;
           type: string;
           text?: { body?: string };
-          image?: { caption?: string };
-          video?: { caption?: string };
-          document?: { caption?: string; filename?: string };
+          image?: { id?: string; caption?: string };
+          video?: { id?: string; caption?: string };
+          audio?: { id?: string };
+          sticker?: { id?: string };
+          document?: { id?: string; caption?: string; filename?: string };
           button?: { text?: string };
           interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } };
         }[];
@@ -61,7 +63,8 @@ export class MetaProvider implements WhatsAppProvider {
           const mediaType = (["image", "audio", "video", "document", "sticker"] as const).find(
             (t) => t === m.type,
           );
-          out.push({ waMessageId: m.id, phone: m.from, name: names.get(m.from), text, mediaType });
+          const mediaRef = mediaType ? m[mediaType]?.id : undefined;
+          out.push({ waMessageId: m.id, phone: m.from, name: names.get(m.from), text, mediaType, mediaRef });
         }
       }
     }
@@ -77,5 +80,17 @@ export class MetaProvider implements WhatsAppProvider {
     if (!res.ok) throw new Error(`Meta API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { messages?: { id?: string }[] };
     return { waMessageId: data.messages?.[0]?.id };
+  }
+
+  async downloadMedia(msg: IncomingMessage): Promise<MediaFile | null> {
+    if (!msg.mediaRef) return null;
+    const auth = { Authorization: `Bearer ${this.token}` };
+    const info = await fetch(`${GRAPH_URL}/${msg.mediaRef}`, { headers: auth });
+    if (!info.ok) throw new Error(`Meta API ${info.status}: ${await info.text()}`);
+    const { url, mime_type } = (await info.json()) as { url?: string; mime_type?: string };
+    if (!url) return null;
+    const file = await fetch(url, { headers: auth });
+    if (!file.ok) throw new Error(`Meta API ${file.status} ao baixar mídia`);
+    return { data: Buffer.from(await file.arrayBuffer()), mimeType: mime_type?.split(";")[0] || "application/octet-stream" };
   }
 }
