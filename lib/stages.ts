@@ -19,6 +19,9 @@ export type Deal = {
   value: number | null;
   notes: string | null;
   position: number;
+  bling_order_id: number | null;
+  bling_order_number: string | null;
+  bling_error: string | null;
   created_at: string;
   updated_at: string;
 };

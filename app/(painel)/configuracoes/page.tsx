@@ -76,6 +76,48 @@ function WhatsAppCard() {
   );
 }
 
+function BlingCard() {
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean } | null>(null);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api<{ configured: boolean; connected: boolean }>("/api/bling").then(setStatus).catch((e) => setNotice(e.message));
+    const result = new URLSearchParams(window.location.search).get("bling");
+    if (result === "ok") setNotice("Bling conectado com sucesso.");
+    if (result === "erro") setNotice("Não foi possível conectar ao Bling. Tente de novo.");
+  }, []);
+
+  async function disconnect() {
+    if (!confirm("Desconectar o Bling? Os pedidos deixam de ser enviados.")) return;
+    await api("/api/bling", { method: "DELETE" });
+    setStatus((s) => s && { ...s, connected: false });
+    setNotice("");
+  }
+
+  return (
+    <div className="card">
+      <strong>Bling (sistema de gestão)</strong>
+      <p className="muted">
+        Situação: {!status ? "verificando..." : status.connected ? "Conectado" : "Não conectado"}.
+        {" "}Quando um card do funil chega em &quot;Pedido fechado&quot;, o cliente e o pedido de venda são criados no Bling.
+        {notice && <span style={{ display: "block", color: notice.includes("sucesso") ? "var(--brand)" : "crimson" }}>{notice}</span>}
+      </p>
+      {status && !status.configured && (
+        <p className="muted">Falta cadastrar o app do Bling no servidor (BLING_CLIENT_ID e BLING_CLIENT_SECRET).</p>
+      )}
+      {status?.configured && !status.connected && (
+        <a href="/api/bling/connect"><button className="primary">Conectar ao Bling</button></a>
+      )}
+      {status?.connected && (
+        <div className="row">
+          <a href="/api/bling/connect"><button>Reconectar</button></a>
+          <button className="danger" onClick={disconnect}>Desconectar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Settings = { bot_enabled: boolean; knowledge_base: string };
 type QuickReply = { id: string; shortcut: string; body: string };
 
@@ -121,6 +163,8 @@ export default function SettingsPage() {
       <h1>Configurações {saved && <span className="tag">salvo</span>}</h1>
 
       <WhatsAppCard />
+
+      <BlingCard />
 
       <div className="card">
         <label className="row" style={{ gap: 10 }}>

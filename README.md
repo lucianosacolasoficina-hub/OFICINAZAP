@@ -12,6 +12,7 @@ Sistema de atendimento no WhatsApp com IA para a Sacolas Oficina.
 - **Funil de vendas (CRM em colunas):** Novo lead, Orçamento enviado, Arte em aprovação, Pedido fechado, Em produção, Entregue e Perdido. Quem pede orçamento entra sozinho em "Novo lead"; é só arrastar os cards e anotar o valor.
 - **Painel** com conversas aguardando, atendimentos do dia, quanto a IA resolve sozinha e o valor vendido no mês.
 - **IA vê imagens:** quando o cliente manda a logo ou uma foto de referência, a IA entende e usa no orçamento. As imagens também aparecem no chat.
+- **Integração com o Bling:** conecte em Configurações > Conectar ao Bling. Quando um card do funil vai para "Pedido fechado", o cliente e um pedido de venda (com produto, quantidade, valor e os dados do orçamento) são criados no Bling. Dá para reenviar pelo card se algo falhar.
 - **Duas formas de conectar o WhatsApp**, trocando uma linha no `.env`:
   - `evolution`: não oficial, por QR Code (use um número secundário, há risco de banimento);
   - `meta`: API oficial do WhatsApp.
@@ -85,7 +86,14 @@ No celular: WhatsApp > Aparelhos conectados > Conectar aparelho > leia o QR Code
 3. Cadastre suas respostas rápidas (ex.: `/pix`, `/prazo`).
 4. Mande uma mensagem de teste para o número conectado.
 
+### Conectar o Bling
+
+1. No Supabase, rode `supabase/migrations/003_bling.sql` no **SQL Editor**.
+2. No Bling, abra **Central de Extensões > Área do Integrador > Criar aplicativo** (tipo "Aplicativo próprio"/privado). Em **Link de redirecionamento**, coloque `https://SEU-SISTEMA/api/bling/callback`. Marque os escopos de **Contatos** e **Pedidos de Venda**.
+3. Copie o **Client Id** e o **Client Secret** do app para `BLING_CLIENT_ID` e `BLING_CLIENT_SECRET` (no Render: serviço oficinazap > Environment).
+4. No OficinaZap, vá em **Configurações > Conectar ao Bling** e autorize com seu login do Bling.
+
 ## Próximas fases
 
-- Transcrição de áudios, follow-up automático para orçamentos sem resposta, integração com o Bling.
+- Transcrição de áudios, follow-up automático para orçamentos sem resposta.
 - Campanhas, Instagram, agendamento de mensagens e relatórios.

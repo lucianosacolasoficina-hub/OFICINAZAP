@@ -50,6 +50,7 @@ export default function FunnelPage() {
       <h1>Funil de vendas</h1>
       <p className="muted" style={{ marginTop: -8 }}>
         Clientes que pediram orçamento entram aqui sozinhos, em &quot;Novo lead&quot;. Arraste os cards entre as colunas.
+        Ao chegar em &quot;Pedido fechado&quot;, o cliente e o pedido de venda são criados no Bling (se ele estiver conectado).
       </p>
       <div className="board">
         {STAGES.map((s) => {
@@ -86,6 +87,8 @@ export default function FunnelPage() {
                   <div className="muted">{d.contact.name || formatPhone(d.contact.phone)}</div>
                   {d.quote?.prazo_desejado && <div className="muted">Prazo: {d.quote.prazo_desejado}</div>}
                   {d.value != null && <div style={{ color: "var(--brand)", fontWeight: 600 }}>{money(Number(d.value))}</div>}
+                  {d.bling_order_id && <span className="tag">Bling {d.bling_order_number ? `nº ${d.bling_order_number}` : "ok"}</span>}
+                  {!d.bling_order_id && d.bling_error && <span className="tag" style={{ color: "crimson" }}>Erro no Bling</span>}
                 </div>
               ))}
             </div>
@@ -121,6 +124,18 @@ function DealModal({ deal, onClose, onSaved }: { deal: DealRow; onClose: () => v
     onSaved();
   }
 
+  const [bling, setBling] = useState({ busy: false, error: deal.bling_error, numero: deal.bling_order_number, sent: !!deal.bling_order_id });
+
+  async function sendToBling() {
+    setBling((b) => ({ ...b, busy: true, error: null }));
+    try {
+      const r = await api<{ id: number; numero: string | null }>(`/api/deals/${deal.id}/bling`, { method: "POST" });
+      setBling({ busy: false, error: null, numero: r.numero, sent: true });
+    } catch (e) {
+      setBling((b) => ({ ...b, busy: false, error: e instanceof Error ? e.message : "erro" }));
+    }
+  }
+
   async function remove() {
     if (!confirm("Excluir este negócio do funil?")) return;
     await api(`/api/deals/${deal.id}`, { method: "DELETE" });
@@ -146,6 +161,19 @@ function DealModal({ deal, onClose, onSaved }: { deal: DealRow; onClose: () => v
             {Object.entries(deal.quote).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · ")}
           </div>
         )}
+        <div className="muted" style={{ fontSize: 13 }}>
+          <strong>Bling:</strong>{" "}
+          {bling.sent ? (
+            `pedido de venda criado${bling.numero ? ` (nº ${bling.numero})` : ""}.`
+          ) : (
+            <>
+              {bling.error ? <span style={{ color: "crimson" }}>{bling.error} </span> : "ainda não enviado. "}
+              <button onClick={sendToBling} disabled={bling.busy}>
+                {bling.busy ? "Enviando..." : bling.error ? "Tentar de novo" : "Enviar ao Bling"}
+              </button>
+            </>
+          )}
+        </div>
         <div className="row" style={{ justifyContent: "space-between", marginTop: 8 }}>
           <button className="danger" onClick={remove}>Excluir</button>
           <div className="row">
