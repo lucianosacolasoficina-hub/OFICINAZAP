@@ -22,11 +22,65 @@ type EvolutionUpsert = {
 };
 
 export class EvolutionProvider implements WhatsAppProvider {
+  private baseUrl: string;
+
   constructor(
-    private baseUrl = process.env.EVOLUTION_API_URL!,
+    baseUrl = process.env.EVOLUTION_API_URL!,
     private apiKey = process.env.EVOLUTION_API_KEY!,
     private instance = process.env.EVOLUTION_INSTANCE!,
-  ) {}
+  ) {
+    // Na rede interna do Render o endereço vem sem "http://" (ex.: oficinazap-evolution:8080).
+    this.baseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, "") : `http://${baseUrl}`;
+  }
+
+  private async call<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", apikey: this.apiKey },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    let data: unknown = text;
+    try {
+      data = JSON.parse(text);
+    } catch {}
+    return { status: res.status, data: data as T };
+  }
+
+  /** Estado da conexão: "open" (conectado), "connecting", "close" ou "missing" (instância não criada). */
+  async connectionState(): Promise<string> {
+    const { status, data } = await this.call<{ instance?: { state?: string } }>(
+      "GET",
+      `/instance/connectionState/${this.instance}`,
+    );
+    if (status === 404) return "missing";
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+    return data.instance?.state ?? "close";
+  }
+
+  /** Cria a instância se preciso, aponta o webhook para o sistema e devolve o QR Code (imagem base64). */
+  async connect(webhookUrl: string): Promise<{ state: string; qr?: string }> {
+    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT"] };
+    let state = await this.connectionState();
+    if (state === "missing") {
+      const created = await this.call<{ qrcode?: { base64?: string } }>("POST", "/instance/create", {
+        instanceName: this.instance,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: true,
+        webhook,
+      });
+      if (created.status >= 400) throw new Error(`Evolution API ${created.status}: ${JSON.stringify(created.data)}`);
+      state = "connecting";
+      if (created.data.qrcode?.base64) return { state, qr: created.data.qrcode.base64 };
+    } else {
+      const set = await this.call("POST", `/webhook/set/${this.instance}`, { webhook });
+      if (set.status >= 400) throw new Error(`Evolution API ${set.status}: ${JSON.stringify(set.data)}`);
+    }
+    if (state === "open") return { state };
+    const { status, data } = await this.call<{ base64?: string }>("GET", `/instance/connect/${this.instance}`);
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+    return { state, qr: data.base64 };
+  }
 
   async verifyWebhook(req: Request) {
     const secret = process.env.WEBHOOK_SECRET;
