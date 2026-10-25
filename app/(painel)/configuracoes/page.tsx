@@ -3,75 +3,12 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 
-const WA_STATE: Record<string, string> = {
-  open: "Conectado",
-  connecting: "Aguardando leitura do QR Code",
-  close: "Desconectado",
-  missing: "Ainda não conectado",
-};
-
 function WhatsAppCard() {
-  const [state, setState] = useState<string | null>(null);
-  const [qr, setQr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const refresh = () =>
-    api<{ state: string }>("/api/whatsapp")
-      .then((r) => {
-        setState(r.state);
-        if (r.state === "open") setQr(null);
-      })
-      .catch((e) => setError(e.message));
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  // Enquanto o QR Code está na tela, confere a cada 3 segundos se o celular já conectou.
-  useEffect(() => {
-    if (!qr) return;
-    const t = setInterval(refresh, 3000);
-    return () => clearInterval(t);
-  }, [qr]);
-
-  async function connect() {
-    setBusy(true);
-    setError("");
-    try {
-      const r = await api<{ state: string; qr?: string }>("/api/whatsapp", { method: "POST" });
-      setState(r.state);
-      setQr(r.qr ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "erro");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="card">
       <strong>WhatsApp</strong>
-      <p className="muted">
-        Situação: {state ? WA_STATE[state] ?? state : "verificando..."}
-        {error && <span style={{ color: "crimson" }}> ({error})</span>}
-      </p>
-      {state !== "open" && (
-        <button className="primary" onClick={connect} disabled={busy}>
-          {busy ? "Gerando QR Code..." : qr ? "Gerar novo QR Code" : "Conectar WhatsApp"}
-        </button>
-      )}
-      {state === "open" && (
-        <button onClick={connect} disabled={busy}>Atualizar ligação com o sistema</button>
-      )}
-      {qr && (
-        <div style={{ marginTop: 12 }}>
-          <p className="muted">
-            No celular, abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho e aponte a câmera para o código.
-          </p>
-          <img src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`} alt="QR Code do WhatsApp" width={260} height={260} />
-        </div>
-      )}
+      <p className="muted">Os números da empresa (até 5) são conectados e organizados na tela WhatsApp.</p>
+      <a href="/whatsapp"><button className="primary">Abrir números de WhatsApp</button></a>
     </div>
   );
 }

@@ -28,7 +28,9 @@ export async function POST(req: Request) {
   }
 
   // Responde logo ao provedor e processa depois (a IA pode levar alguns segundos).
-  const incoming = provider.parseWebhook(payload);
+  // Com vários números, o webhook de cada um traz o nome da instância na URL (reserva, caso não venha no corpo).
+  const instance = new URL(req.url).searchParams.get("instance") ?? undefined;
+  const incoming = provider.parseWebhook(payload).map((m) => ({ ...m, instance: m.instance ?? instance }));
   after(async () => {
     for (const msg of incoming) {
       try {

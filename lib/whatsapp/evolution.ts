@@ -14,6 +14,7 @@ type EvolutionMessage = {
 
 type EvolutionUpsert = {
   event?: string;
+  instance?: string;
   data?: {
     key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string; fromMe?: boolean; id?: string };
     pushName?: string;
@@ -25,9 +26,9 @@ export class EvolutionProvider implements WhatsAppProvider {
   private baseUrl: string;
 
   constructor(
+    private instance = process.env.EVOLUTION_INSTANCE!,
     baseUrl = process.env.EVOLUTION_API_URL!,
     private apiKey = process.env.EVOLUTION_API_KEY!,
-    private instance = process.env.EVOLUTION_INSTANCE!,
   ) {
     // Na rede interna do Render o endereço vem sem "http://" (ex.: oficinazap-evolution:8080).
     this.baseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, "") : `http://${baseUrl}`;
@@ -56,6 +57,30 @@ export class EvolutionProvider implements WhatsAppProvider {
     if (status === 404) return "missing";
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
     return data.instance?.state ?? "close";
+  }
+
+  /** Número do celular conectado (somente dígitos), quando a instância está conectada. */
+  async ownerPhone(): Promise<string | null> {
+    const { status, data } = await this.call<{ ownerJid?: string | null; number?: string | null }[]>(
+      "GET",
+      `/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance)}`,
+    );
+    if (status >= 400 || !Array.isArray(data) || !data[0]) return null;
+    const jid = data[0].ownerJid ?? data[0].number ?? "";
+    return jid.split("@")[0].split(":")[0] || null;
+  }
+
+  /** Desconecta o celular, mas mantém a instância para conectar de novo depois. */
+  async logout() {
+    const { status, data } = await this.call("DELETE", `/instance/logout/${this.instance}`);
+    if (status >= 400 && status !== 404) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+  }
+
+  /** Apaga a instância na Evolution API (desconecta o celular, se estiver conectado). */
+  async remove() {
+    await this.logout().catch(() => {});
+    const { status, data } = await this.call("DELETE", `/instance/delete/${this.instance}`);
+    if (status >= 400 && status !== 404) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
   }
 
   /** Cria a instância se preciso, aponta o webhook para o sistema e devolve o QR Code (imagem base64). */
@@ -114,7 +139,15 @@ export class EvolutionProvider implements WhatsAppProvider {
     if (!text && message.documentMessage?.fileName) text = message.documentMessage.fileName;
 
     return [
-      { waMessageId: key.id, phone: jid.split("@")[0], name: pushName, text, mediaType, mediaRef: mediaType && key.id },
+      {
+        waMessageId: key.id,
+        phone: jid.split("@")[0],
+        name: pushName,
+        text,
+        mediaType,
+        mediaRef: mediaType && key.id,
+        instance: body.instance,
+      },
     ];
   }
 

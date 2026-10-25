@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/contatos", label: "Contatos", icon: "👥" },
   { href: "/orcamentos", label: "Orçamentos", icon: "📋" },
   { href: "/departamentos", label: "Departamentos", icon: "🏢" },
+  { href: "/whatsapp", label: "WhatsApp", icon: "📱" },
   { href: "/configuracoes", label: "Configurações", icon: "⚙️" },
 ];
 
