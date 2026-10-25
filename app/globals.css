@@ -105,3 +105,7 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; }
 .stat .l { color: var(--muted); font-size: 13px; }
 .bar { height: 8px; background: var(--brand); border-radius: 4px; }
 .bubble img.media { max-width: 260px; max-height: 260px; border-radius: 6px; display: block; margin-bottom: 4px; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 999px; margin-right: 8px; vertical-align: middle; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; max-height: 180px; overflow: auto; }
+.dept { font-size: 11px; padding: 1px 8px; border-radius: 999px; color: #fff; justify-self: start; white-space: nowrap; }

@@ -12,6 +12,7 @@ Sistema de atendimento no WhatsApp com IA para a Sacolas Oficina.
 - **Funil de vendas (CRM em colunas):** Novo lead, Orçamento enviado, Arte em aprovação, Pedido fechado, Em produção, Entregue e Perdido. Quem pede orçamento entra sozinho em "Novo lead"; é só arrastar os cards e anotar o valor.
 - **Painel** com conversas aguardando, atendimentos do dia, quanto a IA resolve sozinha e o valor vendido no mês.
 - **IA vê imagens:** quando o cliente manda a logo ou uma foto de referência, a IA entende e usa no orçamento. As imagens também aparecem no chat.
+- **Departamentos:** crie setores (Vendas, Instagram, Carlos design...) em **Departamentos**, escolha os atendentes de cada um e transfira conversas pelo chat. Cada atendente filtra "Meus departamentos" na caixa de entrada, e a IA encaminha o cliente para o setor certo usando a descrição de cada departamento.
 - **Integração com o Bling:** conecte em Configurações > Conectar ao Bling. Quando um card do funil vai para "Pedido fechado", o cliente e um pedido de venda (com produto, quantidade, valor e os dados do orçamento) são criados no Bling. Dá para reenviar pelo card se algo falhar.
 - **Duas formas de conectar o WhatsApp**, trocando uma linha no `.env`:
   - `evolution`: não oficial, por QR Code (use um número secundário, há risco de banimento);
@@ -26,7 +27,7 @@ Next.js 15 (TypeScript), Supabase (banco Postgres e login), Claude (IA da Anthro
 ### 1. Banco de dados (Supabase)
 
 1. Crie um projeto grátis em https://supabase.com.
-2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/001_init.sql` e clique em **Run**. Depois faça o mesmo com `supabase/migrations/002_crm.sql`.
+2. Abra **SQL Editor**, cole o conteúdo de `supabase/migrations/001_init.sql` e clique em **Run**. Depois faça o mesmo, na ordem, com os outros arquivos da pasta `supabase/migrations` (`002_crm.sql`, `003_bling.sql`, `004_departments.sql`...).
 3. Em **Authentication > Users**, clique em **Add user** e crie o login de cada atendente (e-mail e senha).
 4. Em **Project Settings > API**, copie a URL, a `anon key` e a `service_role key` para o `.env`.
 
