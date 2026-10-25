@@ -10,19 +10,43 @@ const API_URL = "https://api.bling.com.br/Api/v3";
 
 type Tokens = { access_token: string; refresh_token: string; expires_at: number };
 
-/** Lê a variável aceitando pequenos erros de digitação no painel (espaços, ponto no fim, minúsculas). */
-function env(name: string) {
-  const exact = process.env[name]?.trim();
+/** Nomes das variáveis do Bling cadastradas no servidor (sem os valores). */
+function blingKeys() {
+  return Object.keys(process.env).filter((k) => /BLING/i.test(k));
+}
+
+/**
+ * Acha a variável aceitando erros de digitação no painel do Render (espaço, ponto, minúsculas,
+ * "CLIENTE" no lugar de "CLIENT"...): basta o nome ter BLING e a palavra ID ou SECRET.
+ */
+function findKey(word: "ID" | "SECRET") {
+  const keys = blingKeys();
+  const exact = keys.find((k) => k === `BLING_CLIENT_${word}`);
   if (exact) return exact;
-  const key = Object.keys(process.env).find((k) => k.replace(/[^a-z0-9_]/gi, "").toUpperCase() === name);
+  const parts = (k: string) => k.toUpperCase().split(/[^A-Z0-9]+/);
+  return keys.find((k) => parts(k).includes(word)) ?? (word === "SECRET" ? keys.find((k) => /SECRE/i.test(k)) : undefined);
+}
+
+function env(word: "ID" | "SECRET") {
+  const key = findKey(word);
   return key ? process.env[key]?.trim() || undefined : undefined;
 }
 
-const clientId = () => env("BLING_CLIENT_ID");
-const clientSecret = () => env("BLING_CLIENT_SECRET");
+const clientId = () => env("ID");
+const clientSecret = () => env("SECRET");
 
 export function blingConfigured() {
   return Boolean(clientId() && clientSecret());
+}
+
+/** Diagnóstico para a tela de Configurações: só nomes e se estão preenchidas, nunca os valores. */
+export function blingEnvStatus() {
+  const status = (word: "ID" | "SECRET") => {
+    const key = findKey(word);
+    if (!key) return "não encontrada";
+    return process.env[key]?.trim() ? `ok (${key})` : `vazia (${key})`;
+  };
+  return { client_id: status("ID"), client_secret: status("SECRET"), names: blingKeys() };
 }
 
 export async function blingConnected() {
