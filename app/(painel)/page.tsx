@@ -48,6 +48,9 @@ export default function InboxPage() {
 
   useEffect(() => {
     api<QuickReply[]>("/api/quick-replies").then(setQuickReplies).catch(console.error);
+    // Link vindo do funil: /?c=<id da conversa>
+    const c = new URLSearchParams(window.location.search).get("c");
+    if (c) setSelected(c);
   }, []);
 
   async function setStatus(status: ConversationStatus) {
@@ -180,7 +183,18 @@ function Chat({
             <div key={m.id} className="sysmsg">{m.body}</div>
           ) : (
             <div key={m.id} className={`bubble ${m.direction === "in" ? "in" : m.sender}`}>
-              {m.media_type && <div className="muted">[{m.media_type}]</div>}
+              {m.media_type === "image" && m.media_url ? (
+                <a href={`/api/media?path=${encodeURIComponent(m.media_url)}`} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/media?path=${encodeURIComponent(m.media_url)}`} alt="imagem do cliente" className="media" />
+                </a>
+              ) : m.media_type && m.media_url ? (
+                <a href={`/api/media?path=${encodeURIComponent(m.media_url)}`} target="_blank" rel="noreferrer">
+                  📎 abrir {m.media_type}
+                </a>
+              ) : (
+                m.media_type && <div className="muted">[{m.media_type}]</div>
+              )}
               {m.body}
               <div className="meta">
                 {m.sender === "bot" ? "🤖 IA · " : ""}
@@ -230,10 +244,12 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
   const [name, setName] = useState(contact.name ?? "");
   const [tags, setTags] = useState(contact.tags.join(", "));
   const [saving, setSaving] = useState(false);
+  const [dealMsg, setDealMsg] = useState("");
 
   useEffect(() => {
     setName(contact.name ?? "");
     setTags(contact.tags.join(", "));
+    setDealMsg("");
   }, [contact.id, contact.name, contact.tags]);
 
   async function save() {
@@ -244,6 +260,16 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
     });
     setSaving(false);
     await onChange();
+  }
+
+  async function addToFunnel() {
+    const q = detail.quote ?? {};
+    const title = [q.quantidade, q.produto].filter(Boolean).join(" ") || contact.name || contact.phone;
+    await api("/api/deals", {
+      method: "POST",
+      body: JSON.stringify({ contact_id: contact.id, conversation_id: detail.conversation.id, title: String(title) }),
+    });
+    setDealMsg("Adicionado ao funil em \"Novo lead\".");
   }
 
   const quote = Object.entries(detail.quote ?? {});
@@ -269,6 +295,9 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
           ))}
         </dl>
       )}
+
+      <h3>Funil de vendas</h3>
+      {dealMsg ? <p className="muted">{dealMsg}</p> : <button onClick={addToFunnel}>Adicionar ao funil</button>}
     </aside>
   );
 }

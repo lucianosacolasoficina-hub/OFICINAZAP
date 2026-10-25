@@ -58,6 +58,7 @@ Regras:
 - Use somente as informações da empresa abaixo. Nunca invente preços, prazos ou condições. Se não souber, diga que vai confirmar com a equipe e transfira para um humano.
 - Não feche preço nem prometa desconto: o valor final é sempre passado pela equipe.
 - Quando os dados principais do orçamento (produto, quantidade, tamanho e prazo) estiverem coletados, agradeça, diga que a equipe vai preparar o orçamento e transfira para um humano.
+- Se o cliente mandar uma imagem (logo, arte, foto de sacola de referência), descreva brevemente o que entendeu e use isso no orçamento (ex.: quantas cores a arte parece ter).
 - Mensagens marcadas como [Atendente] foram escritas por uma pessoa da equipe; mantenha coerência com elas.
 
 <informacoes_da_empresa>
@@ -69,24 +70,32 @@ ${quote ? JSON.stringify(quote) : "nada ainda"}
 </orcamento_coletado_ate_agora>`;
 }
 
+export type AgentImage = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp" };
+
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+export const isAgentImageType = (t: string): t is AgentImage["mediaType"] => IMAGE_TYPES.has(t);
+
 /** Converte o histórico do banco no formato de mensagens da API (alternando cliente e assistente). */
-function toApiMessages(history: Message[]): BetaMessageParam[] {
-  const out: BetaMessageParam[] = [];
+function toApiMessages(history: Message[], images: Map<string, AgentImage>): BetaMessageParam[] {
+  const out: { role: "user" | "assistant"; content: BetaContentBlockParam[] }[] = [];
   for (const m of history) {
     if (m.sender === "system") continue;
     const role = m.direction === "in" ? "user" : "assistant";
+    const blocks: BetaContentBlockParam[] = [];
+    const image = role === "user" ? images.get(m.id) : undefined;
+    if (image) {
+      blocks.push({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } });
+    }
     let text = m.body;
-    if (m.media_type && m.direction === "in") {
+    if (m.media_type && m.direction === "in" && !image) {
       text = `[cliente enviou ${m.media_type}${m.media_type === "audio" ? " (ainda não consigo ouvir áudios)" : ""}] ${text}`;
     }
     if (m.sender === "agent") text = `[Atendente] ${text}`;
-    if (!text.trim()) continue;
+    if (text.trim()) blocks.push({ type: "text", text });
+    if (!blocks.length) continue;
     const last = out[out.length - 1];
-    if (last && last.role === role) {
-      last.content = `${last.content as string}\n${text}`;
-    } else {
-      out.push({ role, content: text });
-    }
+    if (last && last.role === role) last.content.push(...blocks);
+    else out.push({ role, content: blocks });
   }
   while (out.length && out[0].role !== "user") out.shift();
   return out;
@@ -102,9 +111,11 @@ export async function runAgent(opts: {
   history: Message[];
   knowledgeBase: string;
   quote: QuoteData | null;
+  /** Imagens recentes enviadas pelo cliente, por id da mensagem. */
+  images?: Map<string, AgentImage>;
 }): Promise<AgentResult> {
   const client = new Anthropic();
-  const messages = toApiMessages(opts.history);
+  const messages = toApiMessages(opts.history, opts.images ?? new Map());
   const result: AgentResult = { reply: null, handoff: null, quoteFields: [] };
   if (!messages.length) return result;
 
