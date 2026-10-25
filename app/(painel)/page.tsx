@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, formatPhone, formatTime, STATUS_LABEL } from "@/lib/client";
-import type { Contact, Conversation, ConversationStatus, Message, QuoteData } from "@/lib/db";
+import type { Contact, Conversation, ConversationStatus, Department, Message, QuoteData } from "@/lib/db";
 
-type ConvRow = Conversation & { contact: Contact };
+type DeptTag = Pick<Department, "id" | "name" | "color">;
+type ConvRow = Conversation & { contact: Contact; department: DeptTag | null };
 type Detail = { conversation: ConvRow; messages: Message[]; quote: QuoteData | null };
 type QuickReply = { id: string; shortcut: string; body: string };
 
@@ -20,14 +21,17 @@ const POLL_MS = 3000;
 
 export default function InboxPage() {
   const [filter, setFilter] = useState("active");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [list, setList] = useState<ConvRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
 
   const loadList = useCallback(async () => {
-    setList(await api<ConvRow[]>(`/api/conversations?status=${filter}`));
-  }, [filter]);
+    const dept = deptFilter ? `&department=${deptFilter}` : "";
+    setList(await api<ConvRow[]>(`/api/conversations?status=${filter}${dept}`));
+  }, [filter, deptFilter]);
 
   const loadDetail = useCallback(async () => {
     if (selected) setDetail(await api<Detail>(`/api/conversations/${selected}`));
@@ -48,6 +52,9 @@ export default function InboxPage() {
 
   useEffect(() => {
     api<QuickReply[]>("/api/quick-replies").then(setQuickReplies).catch(console.error);
+    api<{ departments: Department[] }>("/api/departments")
+      .then((r) => setDepartments(r.departments.filter((d) => d.active)))
+      .catch(console.error);
     // Link vindo do funil: /?c=<id da conversa>
     const c = new URLSearchParams(window.location.search).get("c");
     if (c) setSelected(c);
@@ -56,6 +63,12 @@ export default function InboxPage() {
   async function setStatus(status: ConversationStatus) {
     if (!selected) return;
     await api(`/api/conversations/${selected}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    await Promise.all([loadDetail(), loadList()]);
+  }
+
+  async function transfer(departmentId: string | null) {
+    if (!selected) return;
+    await api(`/api/conversations/${selected}`, { method: "PATCH", body: JSON.stringify({ department_id: departmentId }) });
     await Promise.all([loadDetail(), loadList()]);
   }
 
@@ -68,6 +81,14 @@ export default function InboxPage() {
               {f.label}
             </button>
           ))}
+          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} style={{ marginTop: 4 }}>
+            <option value="">Todos os departamentos</option>
+            <option value="mine">Meus departamentos</option>
+            <option value="none">Sem departamento</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
         </div>
         <div className="items">
           {list.length === 0 && <p className="muted" style={{ padding: 16 }}>Nenhuma conversa aqui.</p>}
@@ -80,6 +101,9 @@ export default function InboxPage() {
               <span className="time">{formatTime(c.last_message_at)}</span>
               <span className="preview">{c.last_message_preview}</span>
               <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
+              {c.department && (
+                <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span>
+              )}
             </div>
           ))}
         </div>
@@ -87,7 +111,14 @@ export default function InboxPage() {
 
       {detail ? (
         <>
-          <Chat detail={detail} quickReplies={quickReplies} onStatus={setStatus} onSent={loadDetail} />
+          <Chat
+            detail={detail}
+            quickReplies={quickReplies}
+            departments={departments}
+            onStatus={setStatus}
+            onTransfer={transfer}
+            onSent={loadDetail}
+          />
           <ContactSide detail={detail} onChange={loadDetail} />
         </>
       ) : (
@@ -100,12 +131,16 @@ export default function InboxPage() {
 function Chat({
   detail,
   quickReplies,
+  departments,
   onStatus,
+  onTransfer,
   onSent,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
+  departments: Department[];
   onStatus: (s: ConversationStatus) => void;
+  onTransfer: (departmentId: string | null) => void;
   onSent: () => Promise<void>;
 }) {
   const { conversation: c, messages } = detail;
@@ -166,8 +201,29 @@ function Chat({
           <strong>{c.contact.name || formatPhone(c.contact.phone)}</strong>
           <div className="muted">
             {formatPhone(c.contact.phone)} · <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
+            {c.department && (
+              <>
+                {" "}· <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span>
+              </>
+            )}
           </div>
         </div>
+        {c.status !== "closed" && departments.length > 0 && (
+          <select
+            value=""
+            onChange={(e) => e.target.value && onTransfer(e.target.value === "none" ? null : e.target.value)}
+            style={{ width: "auto" }}
+            title="Transferir para outro departamento"
+          >
+            <option value="">Transferir para...</option>
+            {departments
+              .filter((d) => d.id !== c.department_id)
+              .map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            {c.department_id && <option value="none">Sem departamento</option>}
+          </select>
+        )}
         {c.status !== "open" && c.status !== "closed" && (
           <button className="primary" onClick={() => onStatus("open")}>Assumir</button>
         )}

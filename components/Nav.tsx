@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/funil", label: "Funil de vendas", icon: "🗂️" },
   { href: "/contatos", label: "Contatos", icon: "👥" },
   { href: "/orcamentos", label: "Orçamentos", icon: "📋" },
+  { href: "/departamentos", label: "Departamentos", icon: "🏢" },
   { href: "/configuracoes", label: "Configurações", icon: "⚙️" },
 ];
 

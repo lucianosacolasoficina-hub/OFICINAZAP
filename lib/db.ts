@@ -16,6 +16,7 @@ export type Conversation = {
   contact_id: string;
   status: ConversationStatus;
   assigned_to: string | null;
+  department_id: string | null;
   unread_count: number;
   last_message_at: string;
   last_message_preview: string | null;
@@ -32,6 +33,15 @@ export type Message = {
   media_type: string | null;
   media_url: string | null;
   wa_message_id: string | null;
+  created_at: string;
+};
+
+export type Department = {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  active: boolean;
   created_at: string;
 };
 
@@ -160,4 +170,19 @@ export async function mergeQuote(conversationId: string, contactId: string, fiel
       ),
   );
   return merged;
+}
+
+export async function listDepartments(): Promise<Department[]> {
+  return check(await supabaseAdmin().from("departments").select("*").eq("active", true).order("name")) as Department[];
+}
+
+/** Manda a conversa para a fila de um departamento (sem atendente definido) e registra no chat. */
+export async function transferToDepartment(conversationId: string, department: Department, note?: string, agentId?: string) {
+  await updateConversation(conversationId, { department_id: department.id, status: "waiting", assigned_to: null });
+  await addMessage(conversationId, {
+    direction: "out",
+    sender: "system",
+    body: `Conversa transferida para ${department.name}${note ? `: ${note}` : ""}`,
+    agent_id: agentId ?? null,
+  });
 }

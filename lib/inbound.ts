@@ -5,9 +5,11 @@ import {
   addMessage,
   getQuote,
   getSetting,
+  listDepartments,
   mergeQuote,
   recentMessages,
   setMessageMedia,
+  transferToDepartment,
   updateConversation,
   type Message,
   upsertContact,
@@ -50,11 +52,12 @@ export async function handleIncoming(msg: IncomingMessage) {
   // Chegou outra mensagem depois desta: quem responde é o processamento dela.
   if (latest && latest.id !== saved.id) return;
 
-  const [knowledgeBase, quote] = await Promise.all([
+  const [knowledgeBase, quote, departments] = await Promise.all([
     getSetting<string>("knowledge_base", ""),
     getQuote(conversation.id),
+    listDepartments(),
   ]);
-  const result = await runAgent({ history, knowledgeBase, quote, images: await recentImages(history) });
+  const result = await runAgent({ history, knowledgeBase, quote, departments, images: await recentImages(history) });
 
   let merged = quote;
   for (const fields of result.quoteFields) {
@@ -74,7 +77,10 @@ export async function handleIncoming(msg: IncomingMessage) {
       wa_message_id: sent.waMessageId ?? null,
     });
   }
-  if (result.handoff) {
+  const department = result.department && departments.find((d) => d.name === result.department);
+  if (result.handoff && department) {
+    await transferToDepartment(conversation.id, department, `IA: ${result.handoff}`);
+  } else if (result.handoff) {
     await updateConversation(conversation.id, { status: "waiting" });
     await addMessage(conversation.id, {
       direction: "out",

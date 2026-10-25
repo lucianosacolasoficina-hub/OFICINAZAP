@@ -1,5 +1,13 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
-import { addMessage, getQuote, recentMessages, updateConversation, type ConversationStatus } from "@/lib/db";
+import {
+  addMessage,
+  getQuote,
+  recentMessages,
+  transferToDepartment,
+  updateConversation,
+  type ConversationStatus,
+  type Department,
+} from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route<IdCtx>(async (_req, { params }) => {
@@ -7,7 +15,7 @@ export const GET = route<IdCtx>(async (_req, { params }) => {
   const db = supabaseAdmin();
   const { data: conversation, error } = await db
     .from("conversations")
-    .select("*, contact:contacts(*)")
+    .select("*, contact:contacts(*), department:departments(id, name, color)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -26,7 +34,27 @@ const LABELS: Record<ConversationStatus, string> = {
 
 export const PATCH = route<IdCtx>(async (req, { params }, userId) => {
   const { id } = await params;
-  const { status } = (await req.json()) as { status: ConversationStatus };
+  const body = (await req.json()) as { status?: ConversationStatus; department_id?: string | null };
+
+  // Transferir para um departamento (ou tirar do departamento, com null).
+  if (body.department_id !== undefined) {
+    if (body.department_id === null) {
+      await updateConversation(id, { department_id: null });
+      await addMessage(id, { direction: "out", sender: "system", body: "Conversa tirada do departamento", agent_id: userId });
+      return;
+    }
+    const { data: department, error } = await supabaseAdmin()
+      .from("departments")
+      .select("*")
+      .eq("id", body.department_id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!department) throw new HttpError(404, "departamento não encontrado");
+    await transferToDepartment(id, department as Department, undefined, userId);
+    return;
+  }
+
+  const { status } = body as { status: ConversationStatus };
   if (!(status in LABELS)) throw new HttpError(400, "status inválido");
   await updateConversation(id, {
     status,

@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageParam, BetaToolUnion, BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import type { Message, QuoteData } from "../db";
+import type { Department, Message, QuoteData } from "../db";
 
 const MODEL = process.env.AI_MODEL || "claude-opus-5-5";
 
@@ -17,39 +17,66 @@ export const QUOTE_FIELDS = {
   observacoes: "Qualquer outro detalhe relevante",
 } as const;
 
-const tools: BetaToolUnion[] = [
-  {
-    name: "salvar_orcamento",
-    description:
-      "Salva os dados do pedido de orçamento que o cliente informou até agora. Chame sempre que o cliente " +
-      "passar um dado novo. Envie null nos campos que ainda não sabe; os dados já salvos são mantidos.",
-    strict: true,
-    input_schema: {
-      type: "object",
-      additionalProperties: false,
-      required: Object.keys(QUOTE_FIELDS),
-      properties: Object.fromEntries(
-        Object.entries(QUOTE_FIELDS).map(([k, description]) => [k, { type: ["string", "null"], description }]),
-      ),
-    },
-  },
-  {
-    name: "transferir_para_humano",
-    description:
-      "Passa a conversa para um atendente humano. Use quando o cliente pedir para falar com uma pessoa, " +
-      "quando você não souber responder com base nas informações da empresa, quando houver reclamação, " +
-      "ou quando todos os dados do orçamento já estiverem coletados.",
-    strict: true,
-    input_schema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["motivo"],
-      properties: { motivo: { type: "string", description: "Resumo curto do motivo para o atendente" } },
-    },
-  },
-];
+/** Departamentos que a IA pode escolher: só os que têm descrição de quando encaminhar. */
+const routable = (departments: Department[]) => departments.filter((d) => d.description.trim());
 
-function systemPrompt(knowledgeBase: string, quote: QuoteData | null) {
+function buildTools(departments: Department[]): BetaToolUnion[] {
+  const names = routable(departments).map((d) => d.name);
+  const handoffProps: Record<string, unknown> = {
+    motivo: { type: "string", description: "Resumo curto do motivo para o atendente" },
+  };
+  if (names.length) {
+    handoffProps.departamento = {
+      type: ["string", "null"],
+      enum: [...names, null],
+      description: "Departamento que deve atender, conforme a lista de departamentos. null se nenhum se encaixar.",
+    };
+  }
+  return [
+    {
+      name: "salvar_orcamento",
+      description:
+        "Salva os dados do pedido de orçamento que o cliente informou até agora. Chame sempre que o cliente " +
+        "passar um dado novo. Envie null nos campos que ainda não sabe; os dados já salvos são mantidos.",
+      strict: true,
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: Object.keys(QUOTE_FIELDS),
+        properties: Object.fromEntries(
+          Object.entries(QUOTE_FIELDS).map(([k, description]) => [k, { type: ["string", "null"], description }]),
+        ),
+      },
+    },
+    {
+      name: "transferir_para_humano",
+      description:
+        "Passa a conversa para um atendente humano. Use quando o cliente pedir para falar com uma pessoa, " +
+        "quando você não souber responder com base nas informações da empresa, quando houver reclamação, " +
+        "ou quando todos os dados do orçamento já estiverem coletados.",
+      strict: true,
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: Object.keys(handoffProps),
+        properties: handoffProps,
+      },
+    },
+  ];
+}
+
+function departmentsBlock(departments: Department[]) {
+  const list = routable(departments);
+  if (!list.length) return "";
+  return `
+Ao transferir para um humano, escolha o departamento certo pelo assunto da conversa:
+<departamentos>
+${list.map((d) => `- ${d.name}: ${d.description}`).join("\n")}
+</departamentos>
+`;
+}
+
+function systemPrompt(knowledgeBase: string, quote: QuoteData | null, departments: Department[]) {
   return `Você é o assistente virtual de atendimento no WhatsApp da empresa descrita abaixo. Responda clientes em português do Brasil, de forma simpática, objetiva e curta (como numa conversa de WhatsApp: no máximo 3 frases curtas por mensagem, sem markdown, sem listas longas).
 
 Seu objetivo é tirar dúvidas e coletar os dados para o orçamento: ${Object.keys(QUOTE_FIELDS).join(", ")}. Pergunte uma ou duas coisas por vez, não faça um interrogatório. Sempre que o cliente informar algum dado, salve com a ferramenta salvar_orcamento.
@@ -60,7 +87,7 @@ Regras:
 - Quando os dados principais do orçamento (produto, quantidade, tamanho e prazo) estiverem coletados, agradeça, diga que a equipe vai preparar o orçamento e transfira para um humano.
 - Se o cliente mandar uma imagem (logo, arte, foto de sacola de referência), descreva brevemente o que entendeu e use isso no orçamento (ex.: quantas cores a arte parece ter).
 - Mensagens marcadas como [Atendente] foram escritas por uma pessoa da equipe; mantenha coerência com elas.
-
+${departmentsBlock(departments)}
 <informacoes_da_empresa>
 ${knowledgeBase}
 </informacoes_da_empresa>
@@ -104,6 +131,8 @@ function toApiMessages(history: Message[], images: Map<string, AgentImage>): Bet
 export type AgentResult = {
   reply: string | null;
   handoff: string | null;
+  /** Nome do departamento escolhido pela IA ao transferir. */
+  department: string | null;
   quoteFields: QuoteData[];
 };
 
@@ -113,10 +142,13 @@ export async function runAgent(opts: {
   quote: QuoteData | null;
   /** Imagens recentes enviadas pelo cliente, por id da mensagem. */
   images?: Map<string, AgentImage>;
+  departments?: Department[];
 }): Promise<AgentResult> {
   const client = new Anthropic();
   const messages = toApiMessages(opts.history, opts.images ?? new Map());
-  const result: AgentResult = { reply: null, handoff: null, quoteFields: [] };
+  const result: AgentResult = { reply: null, handoff: null, department: null, quoteFields: [] };
+  const departments = opts.departments ?? [];
+  const tools = buildTools(departments);
   if (!messages.length) return result;
 
   const replyParts: string[] = [];
@@ -127,7 +159,7 @@ export async function runAgent(opts: {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "low" },
-      system: systemPrompt(opts.knowledgeBase, opts.quote),
+      system: systemPrompt(opts.knowledgeBase, opts.quote, departments),
       tools,
       messages,
     });
@@ -143,6 +175,7 @@ export async function runAgent(opts: {
         result.quoteFields.push(input);
       } else if (block.name === "transferir_para_humano") {
         result.handoff = input.motivo ?? "sem motivo informado";
+        result.department = input.departamento ?? null;
       }
       toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "ok" });
     }
