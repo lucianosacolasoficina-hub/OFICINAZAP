@@ -20,6 +20,10 @@ services:
         sync: false
       - key: AI_MODEL
         value: claude-opus-5-5
+      - key: BLING_CLIENT_ID
+        sync: false
+      - key: BLING_CLIENT_SECRET
+        sync: false
       - key: WHATSAPP_PROVIDER
         value: evolution
       - key: WEBHOOK_SECRET

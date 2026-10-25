@@ -1,4 +1,5 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
+import { blingConnected, sendDealToBling } from "@/lib/bling";
 import { isStage } from "@/lib/deals";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -22,6 +23,17 @@ export const PATCH = route<IdCtx>(async (req, { params }) => {
   if (typeof body.notes === "string") patch.notes = body.notes;
   const { data, error } = await supabaseAdmin().from("deals").update(patch).eq("id", id).select().single();
   if (error) throw new Error(error.message);
+
+  // Pedido fechado: cria o cliente e o pedido de venda no Bling (uma vez só).
+  // Se o Bling falhar, o card muda de etapa do mesmo jeito e o erro fica salvo no negócio.
+  if (patch.stage === "fechado" && !data.bling_order_id && (await blingConnected())) {
+    try {
+      const order = await sendDealToBling(id);
+      return { ...data, bling_order_id: order.id, bling_order_number: order.numero, bling_error: null };
+    } catch (err) {
+      return { ...data, bling_error: err instanceof Error ? err.message : "erro ao enviar ao Bling" };
+    }
+  }
   return data;
 });
 
