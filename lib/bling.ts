@@ -10,8 +10,19 @@ const API_URL = "https://api.bling.com.br/Api/v3";
 
 type Tokens = { access_token: string; refresh_token: string; expires_at: number };
 
+/** Lê a variável aceitando pequenos erros de digitação no painel (espaços, ponto no fim, minúsculas). */
+function env(name: string) {
+  const exact = process.env[name]?.trim();
+  if (exact) return exact;
+  const key = Object.keys(process.env).find((k) => k.replace(/[^a-z0-9_]/gi, "").toUpperCase() === name);
+  return key ? process.env[key]?.trim() || undefined : undefined;
+}
+
+const clientId = () => env("BLING_CLIENT_ID");
+const clientSecret = () => env("BLING_CLIENT_SECRET");
+
 export function blingConfigured() {
-  return Boolean(process.env.BLING_CLIENT_ID && process.env.BLING_CLIENT_SECRET);
+  return Boolean(clientId() && clientSecret());
 }
 
 export async function blingConnected() {
@@ -19,12 +30,12 @@ export async function blingConnected() {
 }
 
 export function authorizeUrl(state: string) {
-  const params = new URLSearchParams({ response_type: "code", client_id: process.env.BLING_CLIENT_ID!, state });
+  const params = new URLSearchParams({ response_type: "code", client_id: clientId()!, state });
   return `${AUTHORIZE_URL}?${params}`;
 }
 
 async function requestToken(body: Record<string, string>): Promise<Tokens> {
-  const basic = Buffer.from(`${process.env.BLING_CLIENT_ID}:${process.env.BLING_CLIENT_SECRET}`).toString("base64");
+  const basic = Buffer.from(`${clientId()}:${clientSecret()}`).toString("base64");
   const res = await fetch(`${API_URL}/oauth/token`, {
     method: "POST",
     headers: {
