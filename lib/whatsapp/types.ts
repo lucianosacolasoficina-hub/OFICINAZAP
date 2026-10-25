@@ -6,6 +6,8 @@ export type IncomingMessage = {
   mediaType?: "image" | "audio" | "video" | "document" | "sticker";
   /** Referência para baixar o arquivo no provedor (id da mensagem ou da mídia). */
   mediaRef?: string;
+  /** Instância da Evolution API (qual dos números recebeu a mensagem). */
+  instance?: string;
 };
 
 export type MediaFile = { data: Buffer; mimeType: string };

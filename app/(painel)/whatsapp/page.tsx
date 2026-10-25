@@ -1,0 +1,279 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { api, formatPhone } from "@/lib/client";
+
+type Connection = {
+  id: string;
+  name: string;
+  phone: string | null;
+  department_id: string | null;
+  connected_at: string | null;
+  state: string;
+};
+type Department = { id: string; name: string };
+type Data = { connections: Connection[]; departments: Department[]; max: number };
+
+const STATE_LABEL: Record<string, string> = {
+  open: "Conectado",
+  connecting: "Aguardando leitura do QR Code",
+  close: "Desconectado",
+  missing: "Ainda não conectado",
+  error: "Sem resposta do servidor do WhatsApp",
+};
+
+/** Janela com o QR Code: confere a cada 3 segundos se o celular já conectou. */
+function QrModal({ conn, onClose }: { conn: Connection; onClose: (connected: boolean) => void }) {
+  const [qr, setQr] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const generate = () => {
+    setQr(null);
+    setError("");
+    api<{ state: string; qr?: string }>(`/api/whatsapp/${conn.id}`, { method: "POST", body: JSON.stringify({ action: "connect" }) })
+      .then((r) => (r.state === "open" ? onClose(true) : setQr(r.qr ?? null)))
+      .catch((e) => setError(e.message));
+  };
+
+  useEffect(generate, [conn.id]);
+
+  useEffect(() => {
+    if (!qr) return;
+    const t = setInterval(() => {
+      api<Connection>(`/api/whatsapp/${conn.id}`).then((r) => r.state === "open" && onClose(true)).catch(() => {});
+    }, 3000);
+    return () => clearInterval(t);
+  }, [qr]);
+
+  return (
+    <div className="modal-bg" onClick={() => onClose(false)}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <strong>Conectar {conn.name}</strong>
+        <p className="muted">
+          No celular desse número, abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho e aponte a câmera para o código.
+        </p>
+        {error && <p style={{ color: "crimson" }}>{error}</p>}
+        <div className="qr-box">
+          {qr ? (
+            <img src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`} alt="QR Code do WhatsApp" width={260} height={260} />
+          ) : (
+            !error && <span className="muted">Gerando QR Code...</span>
+          )}
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+          <button onClick={generate}>Gerar novo QR Code</button>
+          <button onClick={() => onClose(false)}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Cadastro ou edição do nome e do departamento de um número. */
+function EditModal({
+  conn,
+  departments,
+  onClose,
+}: {
+  conn: Connection | null;
+  departments: Department[];
+  onClose: (saved?: Connection) => void;
+}) {
+  const [name, setName] = useState(conn?.name ?? "");
+  const [departmentId, setDepartmentId] = useState(conn?.department_id ?? "");
+  const [error, setError] = useState("");
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const body = JSON.stringify({ name, department_id: departmentId || null });
+      const saved = conn
+        ? await api<Connection>(`/api/whatsapp/${conn.id}`, { method: "PATCH", body })
+        : await api<Connection>("/api/whatsapp", { method: "POST", body });
+      onClose(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "erro");
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={() => onClose()}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+        <strong>{conn ? "Editar número" : "Conectar novo número"}</strong>
+        <label>
+          Nome
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex.: Bia, Vendas" required autoFocus />
+        </label>
+        <label>
+          Departamento
+          <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+            <option value="">Nenhum</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
+        <p className="muted">As conversas que chegarem por este número entram nesse departamento.</p>
+        {error && <p style={{ color: "crimson" }}>{error}</p>}
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" onClick={() => onClose()}>Cancelar</button>
+          <button className="primary">{conn ? "Salvar" : "Continuar para o QR Code"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ConnectionCard({
+  conn,
+  department,
+  onQr,
+  onEdit,
+  onChanged,
+}: {
+  conn: Connection;
+  department?: string;
+  onQr: () => void;
+  onEdit: () => void;
+  onChanged: () => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const connected = conn.state === "open";
+
+  async function logout() {
+    setMenu(false);
+    if (!confirm(`Desconectar o WhatsApp de "${conn.name}"? Para voltar será preciso ler o QR Code de novo.`)) return;
+    await api(`/api/whatsapp/${conn.id}`, { method: "POST", body: JSON.stringify({ action: "logout" }) }).catch((e) => alert(e.message));
+    onChanged();
+  }
+
+  async function remove() {
+    setMenu(false);
+    if (!confirm(`Excluir "${conn.name}"? O número é desconectado e sai da lista. As conversas antigas continuam no sistema.`)) return;
+    await api(`/api/whatsapp/${conn.id}`, { method: "DELETE" }).catch((e) => alert(e.message));
+    onChanged();
+  }
+
+  return (
+    <div className="wa-card">
+      <div className={`wa-avatar ${connected ? "on" : ""}`}>👤</div>
+      <div className="wa-info">
+        <strong>{conn.name}</strong>
+        <div className="muted">
+          {conn.phone ? formatPhone(conn.phone) : "Sem número"}
+          {department && <span className="tag" style={{ marginLeft: 8 }}>{department}</span>}
+        </div>
+        <div className="muted" style={{ fontSize: 13 }}>
+          {connected && conn.connected_at
+            ? `Conectado em ${new Date(conn.connected_at).toLocaleDateString("pt-BR")}`
+            : STATE_LABEL[conn.state] ?? conn.state}
+        </div>
+        {!connected && (
+          <button className="primary" style={{ marginTop: 6 }} onClick={onQr}>Ler QR Code</button>
+        )}
+      </div>
+      <div className="wa-menu">
+        <button onClick={() => setMenu(!menu)} aria-label="Opções">⋮</button>
+        {menu && (
+          <div className="wa-pop" onMouseLeave={() => setMenu(false)}>
+            <div onClick={() => { setMenu(false); onEdit(); }}>Editar nome e departamento</div>
+            <div onClick={() => { setMenu(false); onQr(); }}>{connected ? "Atualizar ligação com o sistema" : "Ler QR Code"}</div>
+            {connected && <div onClick={logout}>Desconectar</div>}
+            <div className="danger" onClick={remove}>Excluir</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function WhatsAppPage() {
+  const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [qrFor, setQrFor] = useState<Connection | null>(null);
+  const [editing, setEditing] = useState<Connection | "new" | null>(null);
+
+  const load = () =>
+    api<Data>("/api/whatsapp")
+      .then((d) => {
+        setData(d);
+        setError("");
+      })
+      .catch((e) => setError(e.message));
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (!data) return <div className="page">{error ? <span style={{ color: "crimson" }}>{error}</span> : "Carregando..."}</div>;
+
+  const deptName = (id: string | null) => data.departments.find((d) => d.id === id)?.name;
+  const term = search.trim().toLowerCase();
+  const list = data.connections.filter(
+    (c) =>
+      !term ||
+      [c.name, c.phone ?? "", c.phone ? formatPhone(c.phone) : "", deptName(c.department_id) ?? ""].some((v) =>
+        v.toLowerCase().includes(term),
+      ),
+  );
+  const full = data.connections.length >= data.max;
+
+  return (
+    <div className="page">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ marginBottom: 4 }}>WhatsApp QR Code</h1>
+          <p className="muted" style={{ marginTop: 0 }}>Conecte os números da empresa via QR Code para atender pelo OficinaZap.</p>
+        </div>
+        <button className="primary" disabled={full} onClick={() => setEditing("new")}>+ Conectar novo</button>
+      </div>
+
+      <div className="row" style={{ justifyContent: "space-between", margin: "8px 0 16px" }}>
+        <input style={{ maxWidth: 260 }} placeholder="Pesquisar..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <span style={{ color: full ? "crimson" : "var(--muted)" }}>
+          Em uso {data.connections.length} de {data.max} números.
+        </span>
+      </div>
+      {error && <p style={{ color: "crimson" }}>{error}</p>}
+
+      <div className="wa-grid">
+        {list.map((c) => (
+          <ConnectionCard
+            key={c.id}
+            conn={c}
+            department={deptName(c.department_id)}
+            onQr={() => setQrFor(c)}
+            onEdit={() => setEditing(c)}
+            onChanged={load}
+          />
+        ))}
+        {list.length === 0 && <p className="muted">{term ? "Nenhum número encontrado." : "Nenhum número conectado ainda."}</p>}
+      </div>
+
+      {editing && (
+        <EditModal
+          conn={editing === "new" ? null : editing}
+          departments={data.departments}
+          onClose={(saved) => {
+            const isNew = editing === "new";
+            setEditing(null);
+            if (!saved) return;
+            load();
+            // Número novo: abre direto o QR Code.
+            if (isNew) setQrFor({ ...saved, state: "missing" });
+          }}
+        />
+      )}
+      {qrFor && (
+        <QrModal
+          conn={qrFor}
+          onClose={() => {
+            setQrFor(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}

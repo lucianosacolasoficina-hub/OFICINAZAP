@@ -1,4 +1,5 @@
 import { isAgentImageType, runAgent, type AgentImage } from "./ai/agent";
+import { connectionByInstance } from "./connections";
 import { ensureDeal } from "./deals";
 import {
   activeConversation,
@@ -22,8 +23,11 @@ const DEBOUNCE_MS = Number(process.env.AI_DEBOUNCE_MS ?? 4000);
 
 export async function handleIncoming(msg: IncomingMessage) {
   const botEnabled = await getSetting<boolean>("bot_enabled", true);
+  // Com vários números, a conversa fica ligada ao número que recebeu a mensagem e a resposta sai por ele.
+  const connection = msg.instance ? await connectionByInstance(msg.instance) : null;
+  const instance = connection?.instance ?? msg.instance;
   const contact = await upsertContact(msg.phone, msg.name);
-  const conversation = await activeConversation(contact.id, botEnabled);
+  const conversation = await activeConversation(contact.id, botEnabled, connection);
 
   const saved = await addMessage(conversation.id, {
     direction: "in",
@@ -36,7 +40,7 @@ export async function handleIncoming(msg: IncomingMessage) {
 
   if (msg.mediaRef) {
     try {
-      const file = await whatsapp().downloadMedia(msg);
+      const file = await whatsapp(instance).downloadMedia(msg);
       const path = file && (await saveMedia(conversation.id, saved.id, file));
       if (path) await setMessageMedia(saved.id, path);
     } catch (err) {
@@ -69,7 +73,7 @@ export async function handleIncoming(msg: IncomingMessage) {
     await ensureDeal(contact.id, conversation.id, String(title));
   }
   if (result.reply) {
-    const sent = await whatsapp().sendText(contact.phone, result.reply);
+    const sent = await whatsapp(instance).sendText(contact.phone, result.reply);
     await addMessage(conversation.id, {
       direction: "out",
       sender: "bot",

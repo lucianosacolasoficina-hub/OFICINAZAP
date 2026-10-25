@@ -1,23 +1,28 @@
 import { HttpError, route } from "@/lib/api";
-import { EvolutionProvider } from "@/lib/whatsapp/evolution";
+import { createConnection, listConnections, MAX_CONNECTIONS, requireEvolution, syncState } from "@/lib/connections";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// Conexão do WhatsApp pela Evolution API, feita pela tela de Configurações.
-function evolution() {
-  if (process.env.WHATSAPP_PROVIDER === "meta") throw new HttpError(400, "o sistema está usando a API oficial da Meta");
-  return new EvolutionProvider();
-}
+// Números de WhatsApp conectados pela Evolution API (QR Code), na tela WhatsApp.
+export const GET = route(async () => {
+  requireEvolution();
+  const [connections, departments] = await Promise.all([
+    listConnections(),
+    supabaseAdmin().from("departments").select("id, name").order("name"),
+  ]);
+  return {
+    connections: await Promise.all(connections.map(syncState)),
+    departments: departments.data ?? [],
+    max: MAX_CONNECTIONS,
+  };
+});
 
-function webhookUrl(req: Request) {
-  const host = req.headers.get("x-forwarded-host");
-  const origin =
-    process.env.RENDER_EXTERNAL_URL ??
-    (host ? `${req.headers.get("x-forwarded-proto") ?? "https"}://${host}` : new URL(req.url).origin);
-  return `${origin}/api/webhooks/whatsapp?token=${encodeURIComponent(process.env.WEBHOOK_SECRET ?? "")}`;
-}
-
-export const GET = route(async () => ({ state: await evolution().connectionState() }));
-
+// Cadastra um número novo; o QR Code é gerado em seguida por /api/whatsapp/[id].
 export const POST = route(async (req) => {
-  if (!process.env.WEBHOOK_SECRET) throw new HttpError(500, "WEBHOOK_SECRET não configurado");
-  return evolution().connect(webhookUrl(req));
+  requireEvolution();
+  const { name, department_id } = (await req.json()) as { name?: string; department_id?: string | null };
+  if (!name?.trim()) throw new HttpError(400, "informe um nome para o número");
+  if ((await listConnections()).length >= MAX_CONNECTIONS) {
+    throw new HttpError(400, `limite de ${MAX_CONNECTIONS} números atingido`);
+  }
+  return createConnection(name.trim(), department_id || null);
 });

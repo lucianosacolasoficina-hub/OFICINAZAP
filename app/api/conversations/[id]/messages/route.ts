@@ -12,14 +12,15 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
 
   const { data, error } = await supabaseAdmin()
     .from("conversations")
-    .select("*, contact:contacts(phone)")
+    .select("*, contact:contacts(phone), connection:whatsapp_connections(instance)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "conversa não encontrada");
-  const conversation = data as Conversation & { contact: { phone: string } };
+  const conversation = data as Conversation & { contact: { phone: string }; connection: { instance: string } | null };
 
-  const sent = await whatsapp().sendText(conversation.contact.phone, text);
+  // Responde pelo mesmo número de WhatsApp em que o cliente escreveu.
+  const sent = await whatsapp(conversation.connection?.instance).sendText(conversation.contact.phone, text);
   if (conversation.status !== "open" || conversation.assigned_to !== userId) {
     await updateConversation(id, { status: "open", assigned_to: userId });
   }

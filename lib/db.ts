@@ -17,6 +17,7 @@ export type Conversation = {
   status: ConversationStatus;
   assigned_to: string | null;
   department_id: string | null;
+  connection_id: string | null;
   unread_count: number;
   last_message_at: string;
   last_message_preview: string | null;
@@ -64,24 +65,29 @@ export async function upsertContact(phone: string, name?: string): Promise<Conta
   return check(await db.from("contacts").insert({ phone, name: name ?? null }).select().single());
 }
 
-/** Devolve a conversa ativa do contato ou abre uma nova (atendida pela IA se ela estiver ligada). */
-export async function activeConversation(contactId: string, botEnabled: boolean): Promise<Conversation> {
+/**
+ * Devolve a conversa ativa do contato naquele número de WhatsApp ou abre uma nova
+ * (atendida pela IA se ela estiver ligada, já no departamento do número).
+ */
+export async function activeConversation(
+  contactId: string,
+  botEnabled: boolean,
+  connection?: { id: string; department_id: string | null } | null,
+): Promise<Conversation> {
   const db = supabaseAdmin();
-  const open = check(
-    await db
-      .from("conversations")
-      .select("*")
-      .eq("contact_id", contactId)
-      .neq("status", "closed")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ) as Conversation | null;
+  let query = db.from("conversations").select("*").eq("contact_id", contactId).neq("status", "closed");
+  query = connection ? query.eq("connection_id", connection.id) : query.is("connection_id", null);
+  const open = check(await query.order("created_at", { ascending: false }).limit(1).maybeSingle()) as Conversation | null;
   if (open) return open;
   return check(
     await db
       .from("conversations")
-      .insert({ contact_id: contactId, status: botEnabled ? "bot" : "waiting" })
+      .insert({
+        contact_id: contactId,
+        status: botEnabled ? "bot" : "waiting",
+        connection_id: connection?.id ?? null,
+        department_id: connection?.department_id ?? null,
+      })
       .select()
       .single(),
   );
