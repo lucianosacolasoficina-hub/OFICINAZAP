@@ -1,0 +1,42 @@
+import { after, NextResponse } from "next/server";
+import { handleIncoming } from "@/lib/inbound";
+import { whatsapp } from "@/lib/whatsapp";
+
+export const maxDuration = 60;
+
+// Verificação do webhook pela Meta (só é usada com a API oficial).
+export async function GET(req: Request) {
+  const params = new URL(req.url).searchParams;
+  if (params.get("hub.mode") === "subscribe" && params.get("hub.verify_token") === process.env.META_VERIFY_TOKEN) {
+    return new Response(params.get("hub.challenge") ?? "", { status: 200 });
+  }
+  return new Response("forbidden", { status: 403 });
+}
+
+export async function POST(req: Request) {
+  const provider = whatsapp();
+  const raw = await req.text();
+  if (!(await provider.verifyWebhook(req, raw))) {
+    return NextResponse.json({ error: "assinatura inválida" }, { status: 401 });
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return NextResponse.json({ error: "json inválido" }, { status: 400 });
+  }
+
+  // Responde logo ao provedor e processa depois (a IA pode levar alguns segundos).
+  const incoming = provider.parseWebhook(payload);
+  after(async () => {
+    for (const msg of incoming) {
+      try {
+        await handleIncoming(msg);
+      } catch (err) {
+        console.error("Erro ao processar mensagem", msg.waMessageId, err);
+      }
+    }
+  });
+  return NextResponse.json({ ok: true });
+}
