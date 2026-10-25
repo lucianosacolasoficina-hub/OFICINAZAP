@@ -1,3 +1,4 @@
+import { phoneVariants } from "./phone";
 import { supabaseAdmin } from "./supabase/admin";
 
 export type Contact = {
@@ -55,7 +56,8 @@ function check<T>(res: { data: T | null; error: { message: string } | null }): T
 
 export async function upsertContact(phone: string, name?: string): Promise<Contact> {
   const db = supabaseAdmin();
-  const existing = check(await db.from("contacts").select("*").eq("phone", phone).maybeSingle()) as Contact | null;
+  const found = check(await db.from("contacts").select("*").in("phone", phoneVariants(phone))) as Contact[];
+  const existing = found.find((c) => c.phone === phone) ?? found[0] ?? null;
   if (existing) {
     if (name && !existing.name) {
       return check(await db.from("contacts").update({ name }).eq("id", existing.id).select().single());

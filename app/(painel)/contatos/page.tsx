@@ -1,26 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, formatPhone, formatTime } from "@/lib/client";
 import type { Contact } from "@/lib/db";
+import { parseGoogleContacts, type ParsedContact } from "@/lib/googleContacts";
+
+type ImportResult = { created: number; updated: number; unchanged: number; invalid: number };
 
 export default function ContactsPage() {
   const [q, setQ] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [reload, setReload] = useState(0);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
       api<Contact[]>(`/api/contacts?q=${encodeURIComponent(q)}`).then(setContacts).catch(console.error);
     }, 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, reload]);
 
   return (
     <div className="page">
       <h1>Contatos</h1>
-      <div className="card">
-        <input placeholder="Buscar por nome ou telefone" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="card" style={{ display: "flex", gap: 8 }}>
+        <input placeholder="Buscar por nome ou telefone" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1 }} />
+        <button className="primary" onClick={() => setShowImport((v) => !v)}>Importar do Google</button>
       </div>
+      {showImport && <ImportCard onDone={() => setReload((n) => n + 1)} />}
       <table>
         <thead>
           <tr><th>Nome</th><th>Telefone</th><th>Etiquetas</th><th>Desde</th></tr>
@@ -39,6 +46,80 @@ export default function ContactsPage() {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ImportCard({ onDone }: { onDone: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [parsed, setParsed] = useState<ParsedContact[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [error, setError] = useState("");
+
+  async function pick(file: File | undefined) {
+    setParsed(null); setResult(null); setError("");
+    if (!file) return;
+    const list = parseGoogleContacts(await file.text());
+    if (list.length === 0) setError("Não achei contatos nesse arquivo. Confira se é o arquivo .csv exportado do Google Contatos.");
+    else if (!list.some((c) => c.phones.length)) setError("O arquivo não tem nenhum telefone. Confira se é o arquivo .csv exportado do Google Contatos.");
+    else setParsed(list);
+  }
+
+  async function run() {
+    if (!parsed) return;
+    setBusy(true); setError("");
+    const total: ImportResult = { created: 0, updated: 0, unchanged: 0, invalid: 0 };
+    try {
+      for (let i = 0; i < parsed.length; i += 1000) {
+        setProgress(`Importando ${Math.min(i + 1000, parsed.length)} de ${parsed.length}...`);
+        const r = await api<ImportResult>("/api/contacts/import", {
+          method: "POST",
+          body: JSON.stringify({ contacts: parsed.slice(i, i + 1000) }),
+        });
+        for (const k of Object.keys(total) as (keyof ImportResult)[]) total[k] += r[k];
+      }
+      setResult(total);
+      setParsed(null);
+      if (fileRef.current) fileRef.current.value = "";
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "erro ao importar");
+    } finally {
+      setBusy(false); setProgress("");
+    }
+  }
+
+  const withPhone = parsed?.filter((c) => c.phones.length).length ?? 0;
+
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>Importar contatos do Google</h3>
+      <ol className="muted" style={{ paddingLeft: 18, lineHeight: 1.6 }}>
+        <li>Abra <a href="https://contacts.google.com" target="_blank" rel="noreferrer">contacts.google.com</a> com a sua conta do Google.</li>
+        <li>No menu da esquerda, clique em <b>Exportar</b> (ou no ícone de seta para baixo, no topo da lista).</li>
+        <li>Escolha <b>Google CSV</b> e clique em <b>Exportar</b>. O arquivo <b>contacts.csv</b> vai para a pasta Downloads.</li>
+        <li>Clique abaixo em <b>Escolher arquivo</b> e selecione esse arquivo.</li>
+      </ol>
+      <input ref={fileRef} type="file" accept=".csv,text/csv" disabled={busy} onChange={(e) => pick(e.target.files?.[0])} />
+      {parsed && (
+        <p>
+          Encontrei <b>{parsed.length}</b> contatos, <b>{withPhone}</b> com telefone.
+          Contatos que já existem não serão duplicados.{" "}
+          <button className="primary" disabled={busy} onClick={run}>{busy ? "Importando..." : `Importar ${withPhone} contatos`}</button>
+        </p>
+      )}
+      {progress && <p className="muted">{progress}</p>}
+      {result && (
+        <p>
+          Pronto! <b>{result.created}</b> contatos novos
+          {result.updated > 0 && <>, <b>{result.updated}</b> atualizados</>}
+          {result.unchanged > 0 && <>, <b>{result.unchanged}</b> já estavam aqui</>}
+          {result.invalid > 0 && <span className="muted"> ({result.invalid} sem telefone válido foram ignorados)</span>}.
+        </p>
+      )}
+      {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
     </div>
   );
 }
