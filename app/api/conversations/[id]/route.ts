@@ -8,6 +8,7 @@ import {
   type ConversationStatus,
   type Department,
 } from "@/lib/db";
+import { CONVERSATION_SELECT } from "@/lib/inbox";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route<IdCtx>(async (_req, { params }) => {
@@ -15,7 +16,7 @@ export const GET = route<IdCtx>(async (_req, { params }) => {
   const db = supabaseAdmin();
   const { data: conversation, error } = await db
     .from("conversations")
-    .select("*, contact:contacts(*), department:departments(id, name, color)")
+    .select(CONVERSATION_SELECT)
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);

@@ -16,7 +16,7 @@ type EvolutionUpsert = {
   event?: string;
   instance?: string;
   data?: {
-    key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string; fromMe?: boolean; id?: string };
+    key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string; participant?: string; fromMe?: boolean; id?: string };
     pushName?: string;
     message?: EvolutionMessage;
   };
@@ -120,8 +120,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     let jid = key.remoteJid ?? "";
     // Em versões novas do WhatsApp o contato pode vir com id anônimo (@lid); o número real vem à parte.
     if (jid.endsWith("@lid")) jid = key.remoteJidAlt ?? key.senderPn ?? jid;
-    // Ignora mensagens nossas, de grupos e de status.
-    if (key.fromMe || !jid.endsWith("@s.whatsapp.net") || !key.id || !message) return [];
+    const isGroup = jid.endsWith("@g.us");
+    // Ignora mensagens nossas e de status.
+    if (key.fromMe || !(isGroup || jid.endsWith("@s.whatsapp.net")) || !key.id || !message) return [];
 
     let text =
       message.conversation ??
@@ -137,6 +138,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     else if (message.documentMessage) mediaType = "document";
     else if (message.stickerMessage) mediaType = "sticker";
     if (!text && message.documentMessage?.fileName) text = message.documentMessage.fileName;
+    // Em grupo, a mensagem mostra quem escreveu.
+    const author = isGroup ? pushName || key.participant?.split("@")[0] : undefined;
+    if (author) text = `${author}: ${text || (mediaType ? `[${mediaType}]` : "")}`;
 
     return [
       {
@@ -147,8 +151,17 @@ export class EvolutionProvider implements WhatsAppProvider {
         mediaType,
         mediaRef: mediaType && key.id,
         instance: body.instance,
+        isGroup,
       },
     ];
+  }
+
+  async groupName(groupId: string) {
+    const { status, data } = await this.call<{ subject?: string }>(
+      "GET",
+      `/group/findGroupInfos/${this.instance}?groupJid=${encodeURIComponent(`${groupId}@g.us`)}`,
+    );
+    return status < 400 ? data.subject || null : null;
   }
 
   async sendText(phone: string, text: string) {
@@ -175,3 +188,4 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { data: Buffer.from(data.base64, "base64"), mimeType: data.mimetype?.split(";")[0] || "application/octet-stream" };
   }
 }
+

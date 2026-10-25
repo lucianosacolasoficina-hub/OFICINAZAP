@@ -7,6 +7,7 @@ export type Contact = {
   name: string | null;
   tags: string[];
   notes: string | null;
+  is_group: boolean;
   created_at: string;
 };
 
@@ -22,6 +23,8 @@ export type Conversation = {
   unread_count: number;
   last_message_at: string;
   last_message_preview: string | null;
+  /** Desde quando o cliente espera resposta (null = já respondido). */
+  waiting_since: string | null;
   created_at: string;
 };
 
@@ -107,9 +110,13 @@ export async function addMessage(
   const saved = check(res) as Message;
 
   const conv = check(
-    await db.from("conversations").select("unread_count").eq("id", conversationId).single(),
-  ) as { unread_count: number };
+    await db.from("conversations").select("unread_count, waiting_since").eq("id", conversationId).single(),
+  ) as { unread_count: number; waiting_since: string | null };
   const preview = msg.body || (msg.media_type ? `[${msg.media_type}]` : "");
+  // Cliente escreveu: começa a contar o tempo de espera. Atendente ou IA respondeu: zera.
+  let waitingSince = conv.waiting_since;
+  if (msg.direction === "in") waitingSince ??= saved.created_at;
+  else if (msg.sender !== "system") waitingSince = null;
   check(
     await db
       .from("conversations")
@@ -117,6 +124,7 @@ export async function addMessage(
         last_message_at: saved.created_at,
         last_message_preview: preview.slice(0, 120),
         unread_count: msg.direction === "in" ? conv.unread_count + 1 : conv.unread_count,
+        waiting_since: waitingSince,
       })
       .eq("id", conversationId),
   );
@@ -193,4 +201,17 @@ export async function transferToDepartment(conversationId: string, department: D
     body: `Conversa transferida para ${department.name}${note ? `: ${note}` : ""}`,
     agent_id: agentId ?? null,
   });
+}
+
+/** Grupo do WhatsApp: fica guardado como contato marcado como grupo, com o id do grupo no lugar do telefone. */
+export async function upsertGroup(groupId: string, name?: string | null): Promise<Contact> {
+  const db = supabaseAdmin();
+  const existing = check(await db.from("contacts").select("*").eq("phone", groupId).maybeSingle()) as Contact | null;
+  if (existing) {
+    if (name && existing.name !== name) {
+      return check(await db.from("contacts").update({ name, is_group: true }).eq("id", existing.id).select().single());
+    }
+    return existing;
+  }
+  return check(await db.from("contacts").insert({ phone: groupId, name: name ?? null, is_group: true }).select().single());
 }
