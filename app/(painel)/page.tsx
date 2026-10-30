@@ -32,6 +32,7 @@ type Summary = {
   stages: Record<string, number>;
   connections: { id: string; name: string; connected_at: string | null }[];
   me: string;
+  atendentes?: { id: string; name: string; abertas: number }[];
 };
 
 const VIEWS = [
@@ -97,6 +98,9 @@ export default function InboxPage() {
   const [queue, setQueue] = usePref("queue", "todas");
   const [stage, setStage] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
+  const [dropOn, setDropOn] = useState("");
+  const [teamOpen, setTeamOpen] = usePref("teamOpen", true);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = usePref("sidebar", true);
@@ -122,8 +126,9 @@ export default function InboxPage() {
     const p = new URLSearchParams({ view, queue });
     if (stage) p.set("stage", stage);
     if (deptFilter) p.set("department", deptFilter);
+    if (agentFilter) p.set("agent", agentFilter);
     return p;
-  }, [view, queue, stage, deptFilter]);
+  }, [view, queue, stage, deptFilter, agentFilter]);
 
   const loadList = useCallback(async () => {
     const p = new URLSearchParams(params);
@@ -193,6 +198,27 @@ export default function InboxPage() {
     await refresh();
   }
 
+  // Direciona uma conversa para um atendente (arrastando para o nome dele) ou devolve para a fila (null).
+  async function direcionar(convId: string, agentId: string | null) {
+    await api(`/api/conversations/${convId}`, { method: "PATCH", body: JSON.stringify({ assign_to: agentId }) });
+    await Promise.all([loadList(), loadSummary(), convId === selected ? loadDetail() : Promise.resolve()]);
+  }
+  const alvoDrop = (key: string, agentId: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes("text/conv")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dropOn !== key) setDropOn(key);
+    },
+    onDragLeave: () => setDropOn((k) => (k === key ? "" : k)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDropOn("");
+      const id = e.dataTransfer.getData("text/conv");
+      if (id) direcionar(id, agentId).catch((err) => alert(err.message));
+    },
+  });
+
   async function transfer(departmentId: string | null) {
     if (!selected) return;
     await api(`/api/conversations/${selected}`, { method: "PATCH", body: JSON.stringify({ department_id: departmentId }) });
@@ -235,6 +261,29 @@ export default function InboxPage() {
               </button>
             ))}
           </Section>
+
+          {!!summary?.atendentes?.length && (
+            <Section title="Atendentes" open={teamOpen} onToggle={() => setTeamOpen(!teamOpen)}>
+              <span className="ib-dica">Arraste uma conversa para o nome do atendente para direcionar.</span>
+              {summary.atendentes.map((a) => (
+                <button
+                  key={a.id}
+                  className={`ib-agent${agentFilter === a.id ? " on" : ""}${dropOn === a.id ? " drop" : ""}`}
+                  onClick={() => setAgentFilter(agentFilter === a.id ? "" : a.id)}
+                  title={agentFilter === a.id ? "Clique de novo para tirar o filtro" : `Ver as conversas de ${a.name}`}
+                  {...alvoDrop(a.id, a.id)}
+                >
+                  <Avatar id={a.id} name={a.name} size={22} />
+                  <span>{a.name}{a.id === summary.me ? " (você)" : ""}</span>
+                  <span className="n">{a.abertas || ""}</span>
+                </button>
+              ))}
+              <button className={`ib-agent${dropOn === "__fila" ? " drop" : ""}`} title="Solte aqui para devolver a conversa para a fila" {...alvoDrop("__fila", null)}>
+                <Icon name="hourglass" />
+                <span>Devolver para a fila</span>
+              </button>
+            </Section>
+          )}
 
           <Section title="Fila de atendimento" open={queueOpen} onToggle={() => setQueueOpen(!queueOpen)}>
             {QUEUES.map((q) => (
@@ -319,7 +368,7 @@ export default function InboxPage() {
             <p className="muted" style={{ padding: 16 }}>{query ? `Nada encontrado para "${query}".` : "Nenhuma conversa aqui."}</p>
           )}
           {list?.map((c) => (
-            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} />
+            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} />
           ))}
         </div>
       </aside>
@@ -333,6 +382,8 @@ export default function InboxPage() {
             onStatus={setStatus}
             onTransfer={transfer}
             onSent={refresh}
+            atendentes={summary?.atendentes ?? []}
+            onAssign={(agentId) => direcionar(detail.conversation.id, agentId)}
           />
           <ContactSide detail={detail} onChange={loadDetail} />
         </>
@@ -395,12 +446,18 @@ function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: numb
   );
 }
 
-function ConversationItem({ c, me, on, onClick }: { c: ConvRow; me?: string; on: boolean; onClick: () => void }) {
+function ConversationItem({ c, me, on, onClick, arrastar }: { c: ConvRow; me?: string; on: boolean; onClick: () => void; arrastar?: boolean }) {
   const name = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
   const waiting = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
   const late = waiting && Date.now() - new Date(waiting).getTime() > LATE_MIN * 60_000;
   return (
-    <div className={`ib-item ${on ? "on" : ""} ${c.unread_count > 0 ? "has-unread" : ""}`} onClick={onClick}>
+    <div
+      className={`ib-item ${on ? "on" : ""} ${c.unread_count > 0 ? "has-unread" : ""}`}
+      onClick={onClick}
+      draggable={arrastar}
+      onDragStart={arrastar ? (e) => { e.dataTransfer.setData("text/conv", c.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
+      title={arrastar ? "Arraste para um atendente na barra lateral para direcionar" : undefined}
+    >
       <Avatar id={c.contact.id} name={name} />
       <div className="ib-item-body">
         <div className="ib-line">
@@ -529,6 +586,8 @@ function Chat({
   onStatus,
   onTransfer,
   onSent,
+  atendentes = [],
+  onAssign,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
@@ -536,6 +595,8 @@ function Chat({
   onStatus: (s: ConversationStatus) => void;
   onTransfer: (departmentId: string | null) => void;
   onSent: () => Promise<void>;
+  atendentes?: { id: string; name: string }[];
+  onAssign?: (agentId: string | null) => Promise<void>;
 }) {
   const { conversation: c, messages } = detail;
   const me = useMe();
@@ -683,6 +744,20 @@ function Chat({
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             {c.department_id && <option value="none">Sem departamento</option>}
+          </select>
+        )}
+        {c.status !== "closed" && atendentes.length > 0 && onAssign && (
+          <select
+            value=""
+            onChange={(e) => e.target.value && onAssign(e.target.value === "__fila" ? null : e.target.value).catch((err) => alert(err.message))}
+            style={{ width: "auto" }}
+            title="Direcionar a conversa para um atendente"
+          >
+            <option value="">Direcionar para...</option>
+            {atendentes.filter((a) => a.id !== c.assigned_to).map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+            {c.assigned_to && <option value="__fila">Devolver para a fila</option>}
           </select>
         )}
         {c.status !== "open" && c.status !== "closed" && (

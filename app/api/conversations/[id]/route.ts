@@ -9,6 +9,7 @@ import {
   type Department,
 } from "@/lib/db";
 import { CONVERSATION_SELECT } from "@/lib/inbox";
+import { can, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route<IdCtx>(async (_req, { params }) => {
@@ -35,7 +36,23 @@ const LABELS: Record<ConversationStatus, string> = {
 
 export const PATCH = route<IdCtx>(async (req, { params }, userId) => {
   const { id } = await params;
-  const body = (await req.json()) as { status?: ConversationStatus; department_id?: string | null };
+  const body = (await req.json()) as { status?: ConversationStatus; department_id?: string | null; assign_to?: string | null };
+
+  // Direcionar a conversa para um atendente (arrastar para o nome dele). Só quem tem acesso total.
+  if (body.assign_to !== undefined) {
+    const me = await getAgent(userId);
+    if (!can(me, "ver_todas")) throw new HttpError(403, "só quem tem acesso total pode direcionar conversas");
+    if (body.assign_to === null) {
+      await updateConversation(id, { assigned_to: null, status: "waiting" });
+      await addMessage(id, { direction: "out", sender: "system", body: `Conversa devolvida para a fila${me?.name ? ` por ${me.name}` : ""}`, agent_id: userId });
+      return;
+    }
+    const { data: alvo } = await supabaseAdmin().from("agents").select("id, name, active").eq("id", body.assign_to).maybeSingle();
+    if (!alvo || alvo.active === false) throw new HttpError(404, "atendente não encontrado ou desativado");
+    await updateConversation(id, { assigned_to: alvo.id, status: "open" });
+    await addMessage(id, { direction: "out", sender: "system", body: `Conversa direcionada para ${alvo.name}${me?.name && alvo.id !== userId ? ` por ${me.name}` : ""}`, agent_id: userId });
+    return;
+  }
 
   // Transferir para um departamento (ou tirar do departamento, com null).
   if (body.department_id !== undefined) {

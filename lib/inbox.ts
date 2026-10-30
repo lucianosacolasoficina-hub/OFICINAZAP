@@ -17,6 +17,8 @@ export type InboxFilter = {
   /** Id do departamento ou "none" (sem departamento). */
   department?: string | null;
   search?: string | null;
+  /** Id do atendente (só para quem tem acesso total). */
+  agent?: string | null;
 };
 
 /** O que precisa ser buscado antes para montar os filtros. */
@@ -50,6 +52,7 @@ export function parseFilter(params: URLSearchParams): InboxFilter {
     stage: params.get("stage"),
     department: params.get("department"),
     search: params.get("q"),
+    agent: params.get("agent"),
   };
 }
 
@@ -116,6 +119,8 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
   else if (f.department) q = q.eq("department_id", f.department);
 
   if (f.stage) q = q.in("contact_id", lk.stageContacts.get(f.stage) ?? []);
+
+  if (f.agent && !lk.restrito) q = q.eq("assigned_to", f.agent);
 
   if (lk.searchContacts) {
     const text = cleanSearch(f.search ?? "");
