@@ -35,14 +35,16 @@ export const PATCH = route<IdCtx>(async (req, { params }) => {
 // action "logout": desconecta o celular, mas mantém o card para conectar de novo.
 export const POST = route<IdCtx>(async (req, { params }) => {
   const conn = await load(params);
-  const { action } = (await req.json()) as { action?: string };
+  const { action, phone } = (await req.json()) as { action?: string; phone?: string };
   const evolution = new EvolutionProvider(conn.instance);
   if (action === "logout") {
     await evolution.logout();
     return updateConnection(conn.id, { connected_at: null });
   }
   if (!process.env.WEBHOOK_SECRET) throw new HttpError(500, "WEBHOOK_SECRET não configurado");
-  return evolution.connect(webhookUrl(req, conn.instance));
+  const digits = (phone ?? "").replace(/\D/g, "");
+  const num = digits ? (digits.length <= 11 ? "55" + digits : digits) : undefined;
+  return evolution.connect(webhookUrl(req, conn.instance), num);
 });
 
 // Remove o número: apaga a instância na Evolution API. As conversas antigas continuam no sistema.

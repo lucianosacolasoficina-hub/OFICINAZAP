@@ -84,7 +84,7 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /** Cria a instância se preciso, aponta o webhook para o sistema e devolve o QR Code (imagem base64). */
-  async connect(webhookUrl: string): Promise<{ state: string; qr?: string }> {
+  async connect(webhookUrl: string, phone?: string): Promise<{ state: string; qr?: string; pairingCode?: string }> {
     const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT"] };
     let state = await this.connectionState();
     if (state === "missing") {
@@ -102,9 +102,11 @@ export class EvolutionProvider implements WhatsAppProvider {
       if (set.status >= 400) throw new Error(`Evolution API ${set.status}: ${JSON.stringify(set.data)}`);
     }
     if (state === "open") return { state };
-    const { status, data } = await this.call<{ base64?: string }>("GET", `/instance/connect/${this.instance}`);
+    // Com o número, a Evolution devolve também um código de 8 letras para conectar sem câmera.
+    const q = phone ? `?number=${encodeURIComponent(phone)}` : "";
+    const { status, data } = await this.call<{ base64?: string; pairingCode?: string | null }>("GET", `/instance/connect/${this.instance}${q}`);
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
-    return { state, qr: data.base64 };
+    return { state, qr: data.base64, pairingCode: data.pairingCode ?? undefined };
   }
 
   async verifyWebhook(req: Request) {

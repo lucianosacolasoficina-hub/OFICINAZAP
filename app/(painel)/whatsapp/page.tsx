@@ -22,46 +22,96 @@ const STATE_LABEL: Record<string, string> = {
   error: "Sem resposta do servidor do WhatsApp",
 };
 
-/** Janela com o QR Code: confere a cada 3 segundos se o celular já conectou. */
+/**
+ * Janela de conexão: QR Code que se renova sozinho a cada 30 segundos (o WhatsApp
+ * recusa códigos vencidos) ou código de 8 letras pelo número do celular.
+ * Confere a cada 3 segundos se o celular já conectou.
+ */
 function QrModal({ conn, onClose }: { conn: Connection; onClose: (connected: boolean) => void }) {
   const [qr, setQr] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [modo, setModo] = useState<"qr" | "codigo">("qr");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
+  const [geradoEm, setGeradoEm] = useState(0);
 
-  const generate = () => {
-    setQr(null);
+  const generate = (comNumero?: string) => {
     setError("");
-    api<{ state: string; qr?: string }>(`/api/whatsapp/${conn.id}`, { method: "POST", body: JSON.stringify({ action: "connect" }) })
-      .then((r) => (r.state === "open" ? onClose(true) : setQr(r.qr ?? null)))
+    if (!comNumero) setQr(null);
+    api<{ state: string; qr?: string; pairingCode?: string }>(`/api/whatsapp/${conn.id}`, {
+      method: "POST",
+      body: JSON.stringify({ action: "connect", phone: comNumero }),
+    })
+      .then((r) => {
+        if (r.state === "open") return onClose(true);
+        setQr(r.qr ?? null);
+        if (comNumero) setCode(r.pairingCode ?? null);
+        if (comNumero && !r.pairingCode) setError("O servidor não devolveu o código. Confira o número com DDD ou use o QR Code.");
+        setGeradoEm(Date.now());
+      })
       .catch((e) => setError(e.message));
   };
 
-  useEffect(generate, [conn.id]);
+  useEffect(() => generate(), [conn.id]);
+
+  // Renova o QR Code a cada 30 segundos enquanto a janela está aberta (no modo QR).
+  useEffect(() => {
+    if (modo !== "qr") return;
+    const t = setInterval(() => generate(), 30000);
+    return () => clearInterval(t);
+  }, [modo, conn.id]);
 
   useEffect(() => {
-    if (!qr) return;
+    if (!geradoEm) return;
     const t = setInterval(() => {
       api<Connection>(`/api/whatsapp/${conn.id}`).then((r) => r.state === "open" && onClose(true)).catch(() => {});
     }, 3000);
     return () => clearInterval(t);
-  }, [qr]);
+  }, [geradoEm]);
 
   return (
     <div className="modal-bg" onClick={() => onClose(false)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <strong>Conectar {conn.name}</strong>
-        <p className="muted">
-          No celular desse número, abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho e aponte a câmera para o código.
-        </p>
-        {error && <p style={{ color: "crimson" }}>{error}</p>}
-        <div className="qr-box">
-          {qr ? (
-            <img src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`} alt="QR Code do WhatsApp" width={260} height={260} />
-          ) : (
-            !error && <span className="muted">Gerando QR Code...</span>
-          )}
+        <div className="row" style={{ gap: 6, margin: "10px 0" }}>
+          <button className={modo === "qr" ? "primary" : ""} onClick={() => { setModo("qr"); setCode(null); generate(); }}>QR Code</button>
+          <button className={modo === "codigo" ? "primary" : ""} onClick={() => setModo("codigo")}>Código pelo número</button>
         </div>
+        {modo === "qr" ? (
+          <>
+            <p className="muted">
+              No celular desse número, abra o WhatsApp Business &gt; ⋮ ou Configurações &gt; Aparelhos conectados &gt; Conectar um aparelho e aponte a câmera.
+              O código se renova sozinho a cada 30 segundos.
+            </p>
+            {error && <p style={{ color: "crimson" }}>{error}</p>}
+            <div className="qr-box">
+              {qr ? (
+                <img src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`} alt="QR Code do WhatsApp" width={260} height={260} />
+              ) : (
+                !error && <span className="muted">Gerando QR Code...</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted">
+              Sem câmera: digite o número do WhatsApp com DDD e toque em Gerar código. No celular, vá em Aparelhos conectados &gt; Conectar um aparelho &gt;
+              <b> Conectar com número de telefone</b> e digite o código que aparecer aqui.
+            </p>
+            <div className="row" style={{ gap: 6 }}>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(77) 99999-0000" inputMode="tel" style={{ flex: 1 }} />
+              <button className="primary" onClick={() => phone.replace(/\D/g, "").length >= 10 ? generate(phone) : setError("Digite o número com DDD.")}>Gerar código</button>
+            </div>
+            {error && <p style={{ color: "crimson" }}>{error}</p>}
+            {code && (
+              <div className="qr-box" style={{ fontSize: 34, fontWeight: 800, letterSpacing: 6, fontFamily: "monospace" }}>
+                {code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code}
+              </div>
+            )}
+          </>
+        )}
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={generate}>Gerar novo QR Code</button>
+          {modo === "qr" && <button onClick={() => generate()}>Gerar novo QR Code</button>}
           <button onClick={() => onClose(false)}>Fechar</button>
         </div>
       </div>
