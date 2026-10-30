@@ -270,3 +270,39 @@ button.at-n.on { background: var(--brand); color: #fff !important; }
 .num-alerta { margin: 0; font-size: 12.5px; color: #b91c1c; background: #fef2f2; border-radius: 8px; padding: 6px 8px; }
 .wa-hist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 .wa-hist select { width: auto; }
+
+/* ===== Tela nova de conversas (estilo WhatsApp Web) ===== */
+.inbox2 { position: relative; overflow: hidden; }
+.inbox2 .list { width: 380px; }
+.view-chips { display: flex; gap: 6px; padding: 6px 10px 8px; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.view-chips button { white-space: nowrap; font-size: 12.5px; padding: 4px 10px; border-radius: 99px; display: inline-flex; gap: 6px; align-items: center; }
+.view-chips button.on { background: var(--brand-soft, #e7f6ee); border-color: var(--brand); color: var(--brand); font-weight: 600; }
+.view-chips .n { font-size: 11px; opacity: .75; }
+.chat-head.ch2 { padding: 8px 12px; display: block; }
+.ch2-row { display: flex; align-items: center; gap: 8px; }
+.ch2-row .who { flex: 1; min-width: 0; }
+.ch2-row .who strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch2-meta { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.ch2-ic { width: 36px; height: 36px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; font-size: 17px; flex: none; background: var(--panel); }
+button.ch2-ic.on { background: var(--brand-soft, #e7f6ee); border-color: var(--brand); }
+button.ch2-ic.lula { border-color: #5b3df5; }
+button.ch2-ic.zap { border-color: #1fa855; }
+.ch2-acoes { width: 260px; gap: 6px; padding: 10px; }
+.ch2-acoes label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.ch2-acoes button { text-align: left; border: 1px solid var(--border) !important; padding: 7px 10px !important; display: block !important; }
+.ch2-back { display: none !important; }
+.side-wrap { position: relative; display: flex; }
+.side-x { position: absolute; top: 6px; right: 8px; z-index: 2; border: 0; background: none; font-size: 20px; line-height: 1; padding: 4px 8px; }
+.inbox2 .msgs { flex: 1; min-height: 0; overflow-y: auto; }
+@media (max-width: 1300px) {
+  .inbox2 .list { width: 320px; }
+  .side-wrap { position: absolute; right: 0; top: 0; bottom: 0; z-index: 15; box-shadow: -8px 0 24px rgba(0,0,0,.15); }
+  .side-wrap .side { display: block !important; width: 300px; }
+}
+@media (max-width: 900px) {
+  .inbox2 .list { width: 100%; flex: 1; }
+  .inbox2.tem-sel .list { display: none; }
+  .inbox2:not(.tem-sel) .chat, .inbox2:not(.tem-sel) .empty { display: none; }
+  .inbox2 .chat { min-width: 0; }
+  .ch2-back { display: inline-grid !important; }
+}

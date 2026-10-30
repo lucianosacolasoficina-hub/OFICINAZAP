@@ -107,7 +107,8 @@ export default function InboxPage() {
   const [teamOpen, setTeamOpen] = usePref("teamOpen", true);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
-  const [showFilters, setShowFilters] = usePref("sidebar", true);
+  const [showFilters, setShowFilters] = usePref("sidebar2", false);
+  const [infoOpen, setInfoOpen] = usePref("infoOpen", false);
   const [crmOpen, setCrmOpen] = usePref("crmOpen", true);
   const [queueOpen, setQueueOpen] = usePref("queueOpen", true);
   const [filterPop, setFilterPop] = useState(false);
@@ -233,7 +234,7 @@ export default function InboxPage() {
   const extraFilters = (deptFilter ? 1 : 0) + (stage ? 1 : 0);
 
   return (
-    <div className="inbox">
+    <div className={`inbox inbox2${selected ? " tem-sel" : ""}`}>
       {showFilters && (
         <aside className="ib-filters">
           <div className="ib-filters-head">
@@ -385,6 +386,20 @@ export default function InboxPage() {
           </button>
         </div>
 
+        <div className="view-chips" role="tablist" aria-label="Situação">
+          {VIEWS.map((v) => (
+            <button key={v.key} className={view === v.key ? "on" : ""} onClick={() => setView(v.key)}>
+              {v.label}
+              {v.key !== "fechadas" && summary?.views[v.key] ? <span className="n">{count(summary.views[v.key])}</span> : null}
+            </button>
+          ))}
+          {agentFilter && (
+            <button className="on" onClick={() => setAgentFilter("")} title="Tirar o filtro de atendente">
+              👤 {summary?.atendentes?.find((a) => a.id === agentFilter)?.name ?? "Atendente"} ×
+            </button>
+          )}
+        </div>
+
         <div className="items">
           {list === null && <p className="muted" style={{ padding: 16 }}>Carregando...</p>}
           {list?.length === 0 && (
@@ -407,8 +422,16 @@ export default function InboxPage() {
             onSent={refresh}
             atendentes={summary?.atendentes ?? []}
             onAssign={(agentId) => direcionar(detail.conversation.id, agentId)}
+            onBack={() => setSelected(null)}
+            onToggleInfo={() => setInfoOpen(!infoOpen)}
+            infoOpen={infoOpen}
           />
-          <ContactSide detail={detail} onChange={loadDetail} />
+          {infoOpen && (
+            <div className="side-wrap">
+              <button className="side-x" onClick={() => setInfoOpen(false)} aria-label="Fechar dados do cliente">×</button>
+              <ContactSide detail={detail} onChange={loadDetail} />
+            </div>
+          )}
         </>
       ) : selected ? (
         <div className="empty">Carregando...</div>
@@ -647,6 +670,9 @@ function Chat({
   onSent,
   atendentes = [],
   onAssign,
+  onBack,
+  onToggleInfo,
+  infoOpen,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
@@ -656,6 +682,9 @@ function Chat({
   onSent: () => Promise<void>;
   atendentes?: { id: string; name: string }[];
   onAssign?: (agentId: string | null) => Promise<void>;
+  onBack?: () => void;
+  onToggleInfo?: () => void;
+  infoOpen?: boolean;
 }) {
   const { conversation: c, messages } = detail;
   const me = useMe();
@@ -664,6 +693,7 @@ function Chat({
   const [error, setError] = useState("");
   const [qrIndex, setQrIndex] = useState(0);
   const [pdOpen, setPdOpen] = useState(false);
+  const [acoes, setAcoes] = useState(false);
   const [lula, setLula] = useState<{ open: boolean; busy: boolean; out: string; acao: string; q: string }>({ open: false, busy: false, out: "", acao: "", q: "" });
   async function perguntarLula(acao: "sugerir" | "resumir" | "perguntar") {
     setLula((l) => ({ ...l, busy: true, out: "", acao }));
@@ -722,25 +752,27 @@ function Chat({
 
   return (
     <section className="chat">
-      <header className="chat-head">
-        <div className="who">
-          <strong>{c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone))}</strong>
-          <div className="muted">
-            {c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone)} ·{" "}
-            {c.connection && <>via <b>📱 {c.connection.name}</b> ·{" "}</>}
-            <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
-            {c.agent && <> · com {c.agent.name}</>}
-            {c.department && (
-              <>
-                {" "}· <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span>
-              </>
-            )}
+      <header className="chat-head ch2">
+        <div className="ch2-row">
+          {onBack && (
+            <button className="ch2-ic ch2-back" onClick={onBack} title="Voltar para a lista" aria-label="Voltar">←</button>
+          )}
+          <Avatar id={c.contact.id} name={c.contact.name || c.contact.phone} size={38} />
+          <div className="who">
+            <strong>{c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone))}</strong>
+            <div className="muted ch2-meta">
+              {c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone)}
+              {c.connection && <> · 📱 {c.connection.name}</>}
+              {" · "}<span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
+              {c.agent && <> · com {c.agent.name}</>}
+              {c.department && <> · <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span></>}
+            </div>
           </div>
-        </div>
-        <span className="pd-wrap">
-          <button className="lula-cta" onClick={() => setLula((l) => ({ ...l, open: !l.open }))} title="Lula, o assistente de IA: sugere resposta, resume a conversa e tira dúvidas">
-            🤖 Lula <small>assistente de IA</small>
-          </button>
+          {c.status !== "open" && c.status !== "closed" && (
+            <button className="primary" onClick={() => onStatus("open")}>Assumir</button>
+          )}
+          <span className="pd-wrap">
+            <button className="ch2-ic lula" onClick={() => setLula((l) => ({ ...l, open: !l.open }))} title="Lula, assistente de IA: sugere resposta, resume a conversa">🤖</button>
           {lula.open && (
             <span className="pd-menu lula-pop">
               <b className="lula-h">🤖 Lula · assistente de IA</b>
@@ -771,12 +803,10 @@ function Chat({
               <span className="pd-dica">O Lula nunca envia nada sozinho: você revisa e clica em Enviar.</span>
             </span>
           )}
-        </span>
-        {c.status !== "closed" && !c.contact.is_group && (
-          <span className="pd-wrap">
-            <button className="pd-cta" onClick={() => setPdOpen((v) => !v)} title="Mensagem pronta para pedir ao cliente os dados do cadastro">
-              💬 Pedir dados de cadastro <small>WhatsApp</small>
-            </button>
+          </span>
+          {c.status !== "closed" && !c.contact.is_group && (
+            <span className="pd-wrap">
+              <button className="ch2-ic zap" onClick={() => setPdOpen((v) => !v)} title="Pedir dados de cadastro ao cliente">📝</button>
             {pdOpen && (
               <span className="pd-menu">
                 <button onClick={() => { setText(msgCadastro("PJ")); setPdOpen(false); }}>
@@ -788,46 +818,37 @@ function Chat({
                 <span className="pd-dica">A mensagem vai para a caixa de texto: revise e clique em Enviar.</span>
               </span>
             )}
-          </span>
-        )}
-        {c.status !== "closed" && departments.length > 0 && (
-          <select
-            value=""
-            onChange={(e) => e.target.value && onTransfer(e.target.value === "none" ? null : e.target.value)}
-            style={{ width: "auto" }}
-            title="Transferir para outro departamento"
-          >
-            <option value="">Transferir para...</option>
-            {departments
-              .filter((d) => d.id !== c.department_id)
-              .map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            {c.department_id && <option value="none">Sem departamento</option>}
-          </select>
-        )}
-        {c.status !== "closed" && atendentes.length > 0 && onAssign && (
-          <select
-            value=""
-            onChange={(e) => e.target.value && onAssign(e.target.value === "__fila" ? null : e.target.value).catch((err) => alert(err.message))}
-            style={{ width: "auto" }}
-            title="Direcionar a conversa para um atendente"
-          >
-            <option value="">Direcionar para...</option>
-            {atendentes.filter((a) => a.id !== c.assigned_to).map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-            {c.assigned_to && <option value="__fila">Devolver para a fila</option>}
-          </select>
-        )}
-        {c.status !== "open" && c.status !== "closed" && (
-          <button className="primary" onClick={() => onStatus("open")}>Assumir</button>
-        )}
-        {c.status !== "bot" && c.status !== "closed" && (
-          <button onClick={() => onStatus("bot")}>Devolver para IA</button>
-        )}
-        {c.status !== "closed" && <button onClick={() => onStatus("closed")}>Encerrar</button>}
-        {me?.perms.apagar_historico && <button
+            </span>
+          )}
+          {onToggleInfo && (
+            <button className={`ch2-ic${infoOpen ? " on" : ""}`} onClick={onToggleInfo} title="Dados do cliente, pedidos e funil">ℹ️</button>
+          )}
+          <span className="pd-wrap">
+            <button className="ch2-ic" onClick={() => setAcoes((v) => !v)} title="Mais ações" aria-label="Mais ações">⋯</button>
+            {acoes && (
+              <span className="pd-menu ch2-acoes" onMouseLeave={() => setAcoes(false)}>
+                {c.status !== "closed" && departments.length > 0 && (
+                  <label>Transferir para departamento
+                    <select value="" onChange={(e) => { setAcoes(false); if (e.target.value) onTransfer(e.target.value === "none" ? null : e.target.value); }}>
+                      <option value="">Escolha…</option>
+                      {departments.filter((d) => d.id !== c.department_id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      {c.department_id && <option value="none">Sem departamento</option>}
+                    </select>
+                  </label>
+                )}
+                {c.status !== "closed" && atendentes.length > 0 && onAssign && (
+                  <label>Direcionar para atendente
+                    <select value="" onChange={(e) => { setAcoes(false); if (e.target.value) onAssign(e.target.value === "__fila" ? null : e.target.value).catch((err) => alert(err.message)); }}>
+                      <option value="">Escolha…</option>
+                      {atendentes.filter((a) => a.id !== c.assigned_to).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      {c.assigned_to && <option value="__fila">Devolver para a fila</option>}
+                    </select>
+                  </label>
+                )}
+                {c.status !== "bot" && c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("bot"); }}>🤖 Devolver para a IA</button>}
+                {c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("closed"); }}>✅ Encerrar conversa</button>}
+                {c.status === "closed" && <button onClick={() => { setAcoes(false); onStatus("open"); }}>↩ Reabrir e assumir</button>}
+                {me?.perms.apagar_historico && <button
           title="Apagar o histórico de mensagens desta conversa no OficinaZap"
           onClick={async () => {
             if (!confirm("Apagar TODO o histórico de mensagens desta conversa no OficinaZap?\n\nAs mensagens, fotos e arquivos somem daqui e não dá para recuperar. No celular as mensagens continuam. O contato, o orçamento e o funil ficam.")) return;
@@ -838,6 +859,10 @@ function Chat({
         >
           🗑 Apagar histórico
         </button>}
+              </span>
+            )}
+          </span>
+        </div>
       </header>
 
       <div className="msgs">
