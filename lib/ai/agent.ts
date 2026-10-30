@@ -20,7 +20,7 @@ export const QUOTE_FIELDS = {
 /** Departamentos que a IA pode escolher: só os que têm descrição de quando encaminhar. */
 const routable = (departments: Department[]) => departments.filter((d) => d.description.trim());
 
-function buildTools(departments: Department[]): BetaToolUnion[] {
+function buildTools(departments: Department[], comGestao: boolean): BetaToolUnion[] {
   const names = routable(departments).map((d) => d.name);
   const handoffProps: Record<string, unknown> = {
     motivo: { type: "string", description: "Resumo curto do motivo para o atendente" },
@@ -32,7 +32,25 @@ function buildTools(departments: Department[]): BetaToolUnion[] {
       description: "Departamento que deve atender, conforme a lista de departamentos. null se nenhum se encaixar.",
     };
   }
+  const gestaoTools: BetaToolUnion[] = comGestao
+    ? [
+        {
+          name: "consultar_pedido",
+          description:
+            "Consulta no sistema de gestão da empresa a situação de um pedido (etapa da produção e previsão de entrega). " +
+            "Use quando o cliente perguntar por um pedido específico pelo número. Os pedidos do telefone do cliente já estão no contexto.",
+          strict: true,
+          input_schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["numero_pedido"],
+            properties: { numero_pedido: { type: "string", description: "Número do pedido ou da OS informado pelo cliente" } },
+          },
+        },
+      ]
+    : [];
   return [
+    ...gestaoTools,
     {
       name: "salvar_orcamento",
       description:
@@ -76,7 +94,7 @@ ${list.map((d) => `- ${d.name}: ${d.description}`).join("\n")}
 `;
 }
 
-function systemPrompt(knowledgeBase: string, quote: QuoteData | null, departments: Department[]) {
+function systemPrompt(knowledgeBase: string, quote: QuoteData | null, departments: Department[], gestao?: string) {
   return `Você é o assistente virtual de atendimento no WhatsApp da empresa descrita abaixo. Responda clientes em português do Brasil, de forma simpática, objetiva e curta (como numa conversa de WhatsApp: no máximo 3 frases curtas por mensagem, sem markdown, sem listas longas).
 
 Seu objetivo é tirar dúvidas e coletar os dados para o orçamento: ${Object.keys(QUOTE_FIELDS).join(", ")}. Pergunte uma ou duas coisas por vez, não faça um interrogatório. Sempre que o cliente informar algum dado, salve com a ferramenta salvar_orcamento.
@@ -87,7 +105,12 @@ Regras:
 - Quando os dados principais do orçamento (produto, quantidade, tamanho e prazo) estiverem coletados, agradeça, diga que a equipe vai preparar o orçamento e transfira para um humano.
 - Se o cliente mandar uma imagem (logo, arte, foto de sacola de referência), descreva brevemente o que entendeu e use isso no orçamento (ex.: quantas cores a arte parece ter).
 - Mensagens marcadas como [Atendente] foram escritas por uma pessoa da equipe; mantenha coerência com elas.
-${departmentsBlock(departments)}
+${gestao ? `- Para perguntas sobre pedidos (andamento, prazo, entrega), use os dados do sistema de gestão abaixo e a ferramenta consultar_pedido. Explique a etapa em palavras simples (ex.: "está em produção", "pronto para retirada/envio"). Se estiver atrasado, peça desculpas e transfira para um atendente confirmar a nova data. Não informe valores, a não ser o saldo quando o cliente perguntar sobre pagamento. Nunca passe dados de pedidos de outro cliente.
+` : ""}${departmentsBlock(departments)}
+${gestao ? `<sistema_de_gestao>
+${gestao}
+</sistema_de_gestao>
+` : ""}
 <informacoes_da_empresa>
 ${knowledgeBase}
 </informacoes_da_empresa>
@@ -143,12 +166,16 @@ export async function runAgent(opts: {
   /** Imagens recentes enviadas pelo cliente, por id da mensagem. */
   images?: Map<string, AgentImage>;
   departments?: Department[];
+  /** Resumo do cliente no sistema de gestão (pedidos e etapas). */
+  gestao?: string;
+  /** Consulta um pedido pelo número no sistema de gestão (já restrito ao telefone do cliente). */
+  consultarPedido?: (numero: string) => Promise<string>;
 }): Promise<AgentResult> {
   const client = new Anthropic();
   const messages = toApiMessages(opts.history, opts.images ?? new Map());
   const result: AgentResult = { reply: null, handoff: null, department: null, quoteFields: [] };
   const departments = opts.departments ?? [];
-  const tools = buildTools(departments);
+  const tools = buildTools(departments, !!opts.consultarPedido);
   if (!messages.length) return result;
 
   const replyParts: string[] = [];
@@ -159,7 +186,7 @@ export async function runAgent(opts: {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "low" },
-      system: systemPrompt(opts.knowledgeBase, opts.quote, departments),
+      system: systemPrompt(opts.knowledgeBase, opts.quote, departments, opts.gestao),
       tools,
       messages,
     });
@@ -171,6 +198,16 @@ export async function runAgent(opts: {
       if (block.type === "text" && block.text.trim()) replyParts.push(block.text.trim());
       if (block.type !== "tool_use") continue;
       const input = block.input as Record<string, string | null>;
+      if (block.name === "consultar_pedido") {
+        let out = "Não foi possível consultar agora.";
+        try {
+          if (opts.consultarPedido && input.numero_pedido) out = await opts.consultarPedido(String(input.numero_pedido));
+        } catch (err) {
+          console.error("Falha ao consultar pedido", err);
+        }
+        toolResults.push({ type: "tool_result", tool_use_id: block.id, content: out });
+        continue;
+      }
       if (block.name === "salvar_orcamento") {
         result.quoteFields.push(input);
       } else if (block.name === "transferir_para_humano") {

@@ -1,0 +1,13 @@
+import { route, HttpError } from "@/lib/api";
+import { consultarGestao, gestaoAtiva, GESTAO_SITE } from "@/lib/gestao";
+
+// Painel: dados do cliente no sistema de gestão (pedidos, etapas e saldo).
+export const GET = route(async (req) => {
+  if (!gestaoAtiva()) return { ativo: false };
+  const p = new URL(req.url).searchParams;
+  const telefone = p.get("telefone") ?? undefined;
+  const pedido = p.get("pedido") ?? undefined;
+  if (!telefone && !pedido) throw new HttpError(400, "informe telefone ou pedido");
+  const dados = await consultarGestao({ telefone, pedido, staff: true });
+  return { ativo: true, site: GESTAO_SITE, ...(dados ?? {}) };
+});

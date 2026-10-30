@@ -732,6 +732,8 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
         <button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar contato"}</button>
       </div>
 
+      <GestaoBox detail={detail} onSent={onChange} />
+
       <h3>Orçamento coletado</h3>
       {quote.length === 0 ? (
         <p className="muted">Nenhum dado ainda.</p>
@@ -749,5 +751,96 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
       <h3>Funil de vendas</h3>
       {dealMsg ? <p className="muted">{dealMsg}</p> : <button onClick={addToFunnel}>Adicionar ao funil</button>}
     </aside>
+  );
+}
+
+type GPed = { numero: string; etapa: string; entrega: string | null; atrasado: boolean; total: number; aberto: number; itens: string | null; os: { numero: string; etapa: string }[] };
+type GestaoResp = {
+  ativo: boolean;
+  site?: string;
+  cliente?: { nome: string | null; fantasia: string | null; documento: string | null; cidade: string | null } | null;
+  pedidos?: GPed[];
+  aReceber?: number;
+  creditos?: number;
+  atualizadoEm?: string | null;
+};
+
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dBR = (d?: string | null) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "sem data");
+
+/** Pedidos, etapas e saldo do cliente no sistema de gestão, ao lado da conversa. */
+function GestaoBox({ detail, onSent }: { detail: Detail; onSent: () => Promise<void> }) {
+  const contact = detail.conversation.contact;
+  const [data, setData] = useState<GestaoResp | null>(null);
+  const [verTodos, setVerTodos] = useState(false);
+  const [enviando, setEnviando] = useState("");
+
+  useEffect(() => {
+    if (contact.is_group) return;
+    let vivo = true;
+    setData(null);
+    api<GestaoResp>(`/api/gestao?telefone=${encodeURIComponent(contact.phone)}`)
+      .then((r) => vivo && setData(r))
+      .catch(() => vivo && setData({ ativo: false }));
+    return () => {
+      vivo = false;
+    };
+  }, [contact.id, contact.phone, contact.is_group]);
+
+  if (contact.is_group) return null;
+  if (!data) return (<><h3>📦 Sistema de gestão</h3><p className="muted">Consultando…</p></>);
+  if (!data.ativo) return null;
+
+  const pedidos = data.pedidos ?? [];
+  const ativos = pedidos.filter((p) => p.etapa !== "Concluído");
+  const lista = verTodos ? pedidos : ativos;
+
+  async function enviarStatus(p: GPed) {
+    const nome = data?.cliente?.fantasia || data?.cliente?.nome || "";
+    const prod = p.os.length ? p.os.map((o) => o.etapa).join(", ") : p.etapa;
+    const texto = `Olá${nome ? ", " + nome : ""}! Atualização do seu pedido nº ${p.numero}: está na etapa *${prod}*. Previsão de entrega: ${dBR(p.entrega)}. Qualquer dúvida, estou à disposição.`;
+    setEnviando(p.numero);
+    try {
+      await api(`/api/conversations/${detail.conversation.id}/messages`, { method: "POST", body: JSON.stringify({ body: texto }) });
+      await onSent();
+    } finally {
+      setEnviando("");
+    }
+  }
+
+  return (
+    <div className="gz">
+      <h3>📦 Sistema de gestão</h3>
+      {data.cliente ? (
+        <p className="gz-cli"><b>{data.cliente.fantasia || data.cliente.nome}</b>{data.cliente.cidade ? ` · ${data.cliente.cidade}` : ""}</p>
+      ) : (
+        <p className="muted">Telefone não encontrado no cadastro de clientes do sistema.</p>
+      )}
+      {(data.aReceber ?? 0) > 0.009 && <p className="gz-deb">Saldo em aberto: <b>{brl(data.aReceber!)}</b></p>}
+      {(data.creditos ?? 0) > 0.009 && <p className="gz-cred">Crédito do cliente: <b>{brl(data.creditos!)}</b></p>}
+      {data.cliente && (
+        <>
+          <p className="muted" style={{ margin: "6px 0" }}>{ativos.length} pedido{ativos.length === 1 ? "" : "s"} em andamento</p>
+          {lista.map((p) => (
+            <div key={p.numero} className={`gz-ped${p.atrasado ? " late" : ""}`}>
+              <div className="gz-h"><b>Pedido {p.numero}</b>{p.atrasado && <span className="gz-tag">atrasado</span>}</div>
+              <div className="gz-et">{p.etapa}{p.os.length ? ` · produção: ${p.os.map((o) => o.etapa).join(", ")}` : ""}</div>
+              <div className="muted gz-sm">Entrega {dBR(p.entrega)}{p.aberto > 0.009 ? ` · falta receber ${brl(p.aberto)}` : ""}</div>
+              {p.itens && <div className="muted gz-sm gz-it">{p.itens}</div>}
+              {p.etapa !== "Concluído" && (
+                <button className="gz-btn" disabled={!!enviando} onClick={() => enviarStatus(p)}>
+                  {enviando === p.numero ? "Enviando…" : "💬 Enviar status ao cliente"}
+                </button>
+              )}
+            </div>
+          ))}
+          {pedidos.length > ativos.length && (
+            <button className="gz-link" onClick={() => setVerTodos(!verTodos)}>{verTodos ? "Só em andamento" : "Ver também os concluídos"}</button>
+          )}
+        </>
+      )}
+      {data.site && <a className="gz-link" href={data.site} target="_blank" rel="noopener">Abrir o sistema de gestão ↗</a>}
+      {data.atualizadoEm && <p className="muted gz-sm">Dados de {new Date(data.atualizadoEm).toLocaleString("pt-BR").slice(0, 16)}</p>}
+    </div>
   );
 }

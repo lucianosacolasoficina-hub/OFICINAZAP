@@ -16,6 +16,7 @@ import {
   upsertContact,
   upsertGroup,
 } from "./db";
+import { consultarGestao, gestaoAtiva, resumoParaIA } from "./gestao";
 import { loadMedia, saveMedia } from "./media";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
 
@@ -63,7 +64,26 @@ export async function handleIncoming(msg: IncomingMessage) {
     getQuote(conversation.id),
     listDepartments(),
   ]);
-  const result = await runAgent({ history, knowledgeBase, quote, departments, images: await recentImages(history) });
+  // Dados do cliente no sistema de gestão: a IA responde sobre pedidos e prazos.
+  let gestao: string | undefined;
+  if (gestaoAtiva() && !msg.isGroup) {
+    try {
+      gestao = resumoParaIA(await consultarGestao({ telefone: contact.phone }));
+    } catch (err) {
+      console.error("Falha ao consultar o sistema de gestão", err);
+    }
+  }
+  const result = await runAgent({
+    history,
+    knowledgeBase,
+    quote,
+    departments,
+    images: await recentImages(history),
+    gestao,
+    consultarPedido: gestao
+      ? async (numero) => resumoParaIA(await consultarGestao({ telefone: contact.phone, pedido: numero.replace(/\D/g, "") }))
+      : undefined,
+  });
 
   let merged = quote;
   for (const fields of result.quoteFields) {
