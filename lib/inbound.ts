@@ -66,7 +66,8 @@ export async function handleIncoming(msg: IncomingMessage) {
   ]);
   // Dados do cliente no sistema de gestão: a IA responde sobre pedidos e prazos.
   let gestao: string | undefined;
-  if (gestaoAtiva() && !msg.isGroup) {
+  // A IA só responde sobre pedidos se GESTAO_IA=1. Por enquanto a posição do pedido é enviada pelo atendente.
+  if (gestaoAtiva() && process.env.GESTAO_IA === "1" && !msg.isGroup) {
     try {
       gestao = resumoParaIA(await consultarGestao({ telefone: contact.phone }));
     } catch (err) {

@@ -106,7 +106,8 @@ Regras:
 - Se o cliente mandar uma imagem (logo, arte, foto de sacola de referência), descreva brevemente o que entendeu e use isso no orçamento (ex.: quantas cores a arte parece ter).
 - Mensagens marcadas como [Atendente] foram escritas por uma pessoa da equipe; mantenha coerência com elas.
 ${gestao ? `- Para perguntas sobre pedidos (andamento, prazo, entrega), use os dados do sistema de gestão abaixo e a ferramenta consultar_pedido. Explique a etapa em palavras simples (ex.: "está em produção", "pronto para retirada/envio"). Se estiver atrasado, peça desculpas e transfira para um atendente confirmar a nova data. Não informe valores, a não ser o saldo quando o cliente perguntar sobre pagamento. Nunca passe dados de pedidos de outro cliente.
-` : ""}${departmentsBlock(departments)}
+` : `- Se o cliente perguntar sobre um pedido já feito (andamento, prazo, entrega, rastreio), não informe a situação: diga com simpatia que um atendente vai verificar e já retorna, e transfira para um humano.
+`}${departmentsBlock(departments)}
 ${gestao ? `<sistema_de_gestao>
 ${gestao}
 </sistema_de_gestao>
