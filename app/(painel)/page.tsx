@@ -23,14 +23,17 @@ type ConvRow = Conversation & {
   contact: Contact;
   department: DeptTag | null;
   agent: { id: string; name: string } | null;
+  connection?: { id: string; name: string; phone: string | null } | null;
 };
+type NumStats = { todas: number; pendentes: number; abertas: number; robo: number };
 type Detail = { conversation: ConvRow; messages: Message[]; quote: QuoteData | null };
 type QuickReply = { id: string; shortcut: string; body: string };
 type Summary = {
   views: Record<string, number>;
   queues: Record<string, number>;
   stages: Record<string, number>;
-  connections: { id: string; name: string; connected_at: string | null }[];
+  connections: { id: string; name: string; phone?: string | null; connected_at: string | null }[];
+  numeros?: Record<string, NumStats>;
   me: string;
   atendentes?: { id: string; name: string; abertas: number }[];
 };
@@ -99,6 +102,7 @@ export default function InboxPage() {
   const [stage, setStage] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [agentFilter, setAgentFilter] = useState("");
+  const [numero, setNumero] = usePref("numero", "");
   const [dropOn, setDropOn] = useState("");
   const [teamOpen, setTeamOpen] = usePref("teamOpen", true);
   const [search, setSearch] = useState("");
@@ -127,8 +131,9 @@ export default function InboxPage() {
     if (stage) p.set("stage", stage);
     if (deptFilter) p.set("department", deptFilter);
     if (agentFilter) p.set("agent", agentFilter);
+    if (numero) p.set("connection", numero);
     return p;
-  }, [view, queue, stage, deptFilter, agentFilter]);
+  }, [view, queue, stage, deptFilter, agentFilter, numero]);
 
   const loadList = useCallback(async () => {
     const p = new URLSearchParams(params);
@@ -298,6 +303,24 @@ export default function InboxPage() {
       )}
 
       <aside className="list">
+        {(summary?.connections.length ?? 0) > 0 && (
+          <div className="num-tabs" role="tablist" aria-label="Número de WhatsApp">
+            <button className={!numero ? "on" : ""} onClick={() => setNumero("")} title="Conversas de todos os números">
+              Todos os números
+            </button>
+            {summary!.connections.map((n) => {
+              const st = summary!.numeros?.[n.id];
+              return (
+                <button key={n.id} className={numero === n.id ? "on" : ""} onClick={() => setNumero(numero === n.id ? "" : n.id)} title={`${n.name}${n.phone ? " · " + formatPhone(n.phone) : ""}${n.connected_at ? " · conectado" : " · DESCONECTADO"}`}>
+                  <span className={`num-dot ${n.connected_at ? "ok" : "off"}`} />
+                  {n.name}
+                  {st && <span className="num-n">{st.todas}</span>}
+                  {st && st.pendentes > 0 && <span className="num-p" title="Aguardando resposta">{st.pendentes}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="ib-search">
           {!showFilters && (
             <button className="ib-icon-btn" title="Mostrar filtros" onClick={() => setShowFilters(true)}>
@@ -368,7 +391,7 @@ export default function InboxPage() {
             <p className="muted" style={{ padding: 16 }}>{query ? `Nada encontrado para "${query}".` : "Nenhuma conversa aqui."}</p>
           )}
           {list?.map((c) => (
-            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} />
+            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} mostrarNumero={!numero && (summary?.connections.length ?? 0) > 1} />
           ))}
         </div>
       </aside>
@@ -391,11 +414,44 @@ export default function InboxPage() {
         <div className="empty">Carregando...</div>
       ) : (
         <div className="empty">
-          <div className="ib-empty">
-            <Icon name="chat" size={72} />
-            <h2>Nenhuma conversa selecionada</h2>
-            <p className="muted">Selecione uma conversa na lista para visualizar o atendimento.</p>
-          </div>
+          {(summary?.connections.length ?? 0) > 0 ? (
+            <div className="num-painel">
+              <h2>Números de WhatsApp</h2>
+              <p className="muted">Escolha um número para ver só as conversas dele, ou selecione uma conversa na lista.</p>
+              <div className="num-cards">
+                {summary!.connections.map((n) => {
+                  const st = summary!.numeros?.[n.id] ?? { todas: 0, pendentes: 0, abertas: 0, robo: 0 };
+                  return (
+                    <div key={n.id} className={`num-card${numero === n.id ? " on" : ""}`}>
+                      <div className="num-card-h">
+                        <span className={`num-dot ${n.connected_at ? "ok" : "off"}`} />
+                        <div>
+                          <b>{n.name}</b>
+                          <div className="muted">{n.phone ? formatPhone(n.phone) : "sem número"} · {n.connected_at ? "conectado" : "desconectado"}</div>
+                        </div>
+                      </div>
+                      <div className="num-stats">
+                        <span><b className="w">{st.pendentes}</b>aguardando</span>
+                        <span><b className="g">{st.abertas}</b>em atendimento</span>
+                        <span><b className="v">{st.robo}</b>com a IA</span>
+                        <span><b>{st.todas}</b>abertas</span>
+                      </div>
+                      {!n.connected_at && <p className="num-alerta">Desconectado: as mensagens deste número não estão chegando. Conecte na tela WhatsApp.</p>}
+                      <button className={numero === n.id ? "" : "primary"} onClick={() => setNumero(numero === n.id ? "" : n.id)}>
+                        {numero === n.id ? "Mostrar todos os números" : "Ver conversas deste número"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="ib-empty">
+              <Icon name="chat" size={72} />
+              <h2>Nenhuma conversa selecionada</h2>
+              <p className="muted">Selecione uma conversa na lista para visualizar o atendimento.</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -446,7 +502,7 @@ function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: numb
   );
 }
 
-function ConversationItem({ c, me, on, onClick, arrastar }: { c: ConvRow; me?: string; on: boolean; onClick: () => void; arrastar?: boolean }) {
+function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero }: { c: ConvRow; me?: string; on: boolean; onClick: () => void; arrastar?: boolean; mostrarNumero?: boolean }) {
   const name = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
   const waiting = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
   const late = waiting && Date.now() - new Date(waiting).getTime() > LATE_MIN * 60_000;
@@ -467,6 +523,9 @@ function ConversationItem({ c, me, on, onClick, arrastar }: { c: ConvRow; me?: s
         </div>
         <div className="preview">{formatPreview(c.last_message_preview) || " "}</div>
         <div className="ib-line ib-tags">
+          {mostrarNumero && c.connection ? (
+            <span className="ib-num" title={`Chegou pelo número ${c.connection.name}`}>📱 {c.connection.name}</span>
+          ) : null}
           {c.department ? (
             <span className="ib-dept">
               <span className="dot" style={{ background: c.department.color, width: 7, height: 7, marginRight: 4 }} />
@@ -668,6 +727,7 @@ function Chat({
           <strong>{c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone))}</strong>
           <div className="muted">
             {c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone)} ·{" "}
+            {c.connection && <>via <b>📱 {c.connection.name}</b> ·{" "}</>}
             <span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
             {c.agent && <> · com {c.agent.name}</>}
             {c.department && (

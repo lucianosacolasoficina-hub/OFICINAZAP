@@ -19,6 +19,8 @@ export type InboxFilter = {
   search?: string | null;
   /** Id do atendente (só para quem tem acesso total). */
   agent?: string | null;
+  /** Número de WhatsApp (id da conexão) por onde a conversa chegou. */
+  connection?: string | null;
 };
 
 /** O que precisa ser buscado antes para montar os filtros. */
@@ -53,6 +55,7 @@ export function parseFilter(params: URLSearchParams): InboxFilter {
     department: params.get("department"),
     search: params.get("q"),
     agent: params.get("agent"),
+    connection: params.get("connection"),
   };
 }
 
@@ -122,6 +125,9 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
 
   if (f.agent && !lk.restrito) q = q.eq("assigned_to", f.agent);
 
+  if (f.connection === "none") q = q.is("connection_id", null);
+  else if (f.connection) q = q.eq("connection_id", f.connection);
+
   if (lk.searchContacts) {
     const text = cleanSearch(f.search ?? "");
     const ids = lk.searchContacts.length ? `,contact_id.in.(${lk.searchContacts.join(",")})` : "";
@@ -132,15 +138,17 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
 
 /** Conversas com o contato junto (inner join, para poder filtrar por grupo). */
 export const CONVERSATION_SELECT =
-  "*, contact:contacts!inner(*), department:departments(id, name, color), agent:agents(id, name)";
+  "*, contact:contacts!inner(*), department:departments(id, name, color), agent:agents(id, name), connection:whatsapp_connections(id, name, phone)";
 
-export async function countAll(userId: string, base: InboxFilter) {
+export async function countAll(userId: string, base: InboxFilter, connIds: string[] = []) {
   const db = supabaseAdmin();
   const stageKeys = STAGES.map((s) => s.key);
   const lk = await loadLookups(userId, stageKeys);
-  const count = async (f: InboxFilter) => {
+  const count = async (f: InboxFilter, soStatus?: string) => {
     const query = db.from("conversations").select("id, contact:contacts!inner(is_group)", { count: "exact", head: true });
-    const { count: n, error } = await applyFilter(query, f, userId, lk);
+    let q = applyFilter(query, f, userId, lk);
+    if (soStatus) q = q.eq("status", soStatus);
+    const { count: n, error } = await q;
     if (error) throw new Error(error.message);
     return n ?? 0;
   };
@@ -148,10 +156,23 @@ export async function countAll(userId: string, base: InboxFilter) {
     Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await count(make(k))]))) as Record<K, number>;
 
   // Os números de cada bloco respeitam o que está escolhido nos outros blocos.
-  const [views, queues, stages] = await Promise.all([
+  const [views, queues, stages, numeros] = await Promise.all([
     keyed(VIEWS, (view) => ({ ...base, view, stage: null })),
     keyed(QUEUES, (queue) => ({ ...base, queue, stage: null })),
     keyed(stageKeys, (stage) => ({ ...base, stage })),
+    // Cada número de WhatsApp com seus totais (abertas, aguardando, em atendimento, com a IA).
+    Promise.all(
+      connIds.map(async (id) => {
+        const b = { ...base, connection: id, stage: null, agent: null };
+        const [todas, pendentes, abertas, robo] = await Promise.all([
+          count({ ...b, view: "todas" }),
+          count({ ...b, view: "pendentes" }),
+          count({ ...b, view: "todas" }, "open"),
+          count({ ...b, view: "robo" }),
+        ]);
+        return [id, { todas, pendentes, abertas, robo }] as const;
+      }),
+    ).then((l) => Object.fromEntries(l)),
   ]);
-  return { views, queues, stages };
+  return { views, queues, stages, numeros };
 }
