@@ -7,6 +7,7 @@ import { useMe } from "@/lib/useMe";
 // "perm": permissão necessária para ver o menu ("admin" = só administrador).
 const LINKS: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: "/painel", label: "Painel", icon: "📊", perm: "ver_todas" },
+  { href: "/central", label: "Central de atendimento (colunas)", icon: "🗂" },
   { href: "/", label: "Conversas", icon: "💬" },
   { href: "/funil", label: "Funil de vendas", icon: "🗂️", perm: "funil" },
   { href: "/contatos", label: "Contatos", icon: "👥" },
@@ -23,6 +24,8 @@ export function Nav() {
   const me = useMe();
   const show = (perm?: string) =>
     !perm || (me ? (perm === "admin" ? me.role === "admin" : me.perms[perm as keyof typeof me.perms]) : perm !== "admin");
+  // Dentro da Central de atendimento a conversa abre numa janela sem o menu.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("embed") === "1") return null;
   return (
     <nav className="nav">
       <div className="logo">
