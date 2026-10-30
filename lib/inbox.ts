@@ -76,10 +76,11 @@ export async function loadLookups(userId: string, stages: string[], search?: str
 
 export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, userId: string, lk: Lookups): T {
   let q = query;
-  // Atendente sem "ver todas as conversas": só as dele, as dos departamentos dele e a fila geral.
+  // Atendente sem acesso total: só os clientes que ele está atendendo e os que ainda aguardam
+  // atendimento (sem atendente), nunca as encerradas nem as dos colegas.
   if (lk.restrito) {
     const deps = lk.myDepartments.length ? `,department_id.in.(${lk.myDepartments.join(",")})` : "";
-    q = q.or(`assigned_to.eq.${userId}${deps},and(department_id.is.null,assigned_to.is.null)`);
+    q = q.neq("status", "closed").or(`assigned_to.eq.${userId},and(assigned_to.is.null,or(department_id.is.null${deps}))`);
   }
   switch (f.view) {
     case "todas":

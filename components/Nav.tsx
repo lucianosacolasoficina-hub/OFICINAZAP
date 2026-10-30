@@ -6,7 +6,7 @@ import { useMe } from "@/lib/useMe";
 
 // "perm": permissão necessária para ver o menu ("admin" = só administrador).
 const LINKS: { href: string; label: string; icon: string; perm?: string }[] = [
-  { href: "/painel", label: "Painel", icon: "📊" },
+  { href: "/painel", label: "Painel", icon: "📊", perm: "ver_todas" },
   { href: "/", label: "Conversas", icon: "💬" },
   { href: "/funil", label: "Funil de vendas", icon: "🗂️", perm: "funil" },
   { href: "/contatos", label: "Contatos", icon: "👥" },
@@ -14,6 +14,7 @@ const LINKS: { href: string; label: string; icon: string; perm?: string }[] = [
   { href: "/departamentos", label: "Departamentos", icon: "🏢", perm: "departamentos" },
   { href: "/whatsapp", label: "WhatsApp", icon: "📱", perm: "whatsapp" },
   { href: "/configuracoes", label: "Configurações", icon: "⚙️", perm: "configuracoes" },
+  { href: "/atendimentos", label: "Atendimentos por atendente", icon: "📈", perm: "admin" },
   { href: "/equipe", label: "Equipe e permissões", icon: "🔐", perm: "admin" },
 ];
 

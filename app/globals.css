@@ -212,3 +212,9 @@ button.lula-cta small { background: rgba(255,255,255,.22); border-radius: 99px; 
 .lula-ask input { flex: 1; min-width: 0; }
 .lula-out { white-space: pre-wrap; background: var(--bg, #f5f6f8); border-radius: 8px; padding: 10px; font-size: 13.5px; line-height: 1.45; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .lula-out button { align-self: flex-end; }
+
+/* Atendimentos por atendente */
+.at-tab th.r, .at-tab td.r { text-align: right; }
+.at-tab th.at-grp { text-align: center; border-bottom: 1px solid var(--border); }
+button.at-n { border: 0; background: none; font-weight: 700; padding: 2px 8px; border-radius: 6px; font-size: 14px; }
+button.at-n.on { background: var(--brand); color: #fff !important; }

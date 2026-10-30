@@ -2,7 +2,7 @@ import { supabaseAdmin } from "./supabase/admin";
 
 // Permissões dos atendentes. O administrador pode tudo e gerencia a equipe.
 export const PERMS = {
-  ver_todas: { label: "Ver todas as conversas", desc: "Desligado: vê só as suas, as do seu departamento e a fila geral", padrao: true },
+  ver_todas: { label: "Acesso total às conversas", desc: "Desligado: vê só os clientes que ele está atendendo e os que ainda aguardam atendimento (sem as encerradas e sem as dos colegas)", padrao: false },
   apagar_historico: { label: "Apagar histórico de mensagens", desc: "Botão 🗑 Apagar histórico na conversa", padrao: false },
   sistema_gestao: { label: "Ver pedidos e saldo do sistema de gestão", desc: "Quadro 📦 Sistema de gestão ao lado da conversa", padrao: true },
   funil: { label: "Funil de vendas", desc: "Ver e mover os cards do funil", padrao: true },
@@ -50,6 +50,7 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   const escrita = method !== "GET";
   if (path.startsWith("/api/team")) return "admin";
   if (path.startsWith("/api/whatsapp")) return "whatsapp";
+  if (path.startsWith("/api/stats")) return "ver_todas";
   if (path.startsWith("/api/gestao")) return "sistema_gestao";
   if (/^\/api\/conversations\/[^/]+\/history/.test(path)) return "apagar_historico";
   if (path.startsWith("/api/deals")) return "funil";
@@ -57,4 +58,15 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   if (path.startsWith("/api/departments") && escrita) return "departamentos";
   if (path.startsWith("/api/contacts") && escrita) return "contatos";
   return null;
+}
+
+/** Atendente restrito pode abrir esta conversa? (a dele, ou ainda sem atendente e não encerrada) */
+export function podeVerConversa(
+  userId: string,
+  conv: { assigned_to: string | null; status: string; department_id: string | null },
+  myDepartments: string[],
+) {
+  if (conv.status === "closed") return false;
+  if (conv.assigned_to) return conv.assigned_to === userId;
+  return !conv.department_id || myDepartments.includes(conv.department_id);
 }
