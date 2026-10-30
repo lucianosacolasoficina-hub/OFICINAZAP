@@ -237,4 +237,6 @@ button.at-n.on { background: var(--brand); color: #fff !important; }
 }
 @media (max-width: 900px) {
   .chat { min-width: 0; }
+  .ib-filters { display: none; }
+  .list { width: 240px; }
 }
