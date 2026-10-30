@@ -354,3 +354,10 @@ button.cc-item.nova b { font-weight: 800; }
 .cc-drawer iframe { width: 100%; height: 100%; border: 0; }
 .cc-fechar { position: absolute; top: 8px; left: -44px; width: 36px; height: 36px; border-radius: 50%; font-size: 20px; background: #fff; }
 @media (max-width: 700px) { .cc-fechar { left: auto; right: 8px; top: auto; bottom: 70px; z-index: 2; } }
+
+/* Leitura melhor: letras maiores nas mensagens e na lista */
+.bubble { font-size: 15px; line-height: 1.45; max-width: 72%; }
+.bubble .meta { font-size: 11.5px; }
+.ib-item .name { font-size: 14.5px; }
+.ib-item .preview { font-size: 13.5px; }
+.composer textarea { font-size: 15px; }
