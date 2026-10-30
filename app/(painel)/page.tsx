@@ -65,8 +65,10 @@ const STAGE_COLORS: Record<string, string> = {
   perdido: "#c53030",
 };
 
-const POLL_MS = 3000;
-const SUMMARY_MS = 10000;
+const POLL_MS = 8000; // lista de conversas
+const MSG_MS = 3000; // mensagens novas da conversa aberta (só as novas)
+const SUMMARY_MS = 30000; // contadores
+const visivel = () => typeof document === "undefined" || !document.hidden;
 /** Acima disso o tempo de espera fica vermelho. */
 const LATE_MIN = 60;
 
@@ -150,24 +152,45 @@ export default function InboxPage() {
     if (selected) setDetail(await api<Detail>(`/api/conversations/${selected}`));
   }, [selected]);
 
+  // Só atualiza com a aba aberta na tela (economiza o servidor e deixa tudo mais rápido).
   useEffect(() => {
     loadList().catch(console.error);
-    const t = setInterval(() => loadList().catch(console.error), POLL_MS);
+    const t = setInterval(() => visivel() && loadList().catch(console.error), POLL_MS);
     return () => clearInterval(t);
   }, [loadList]);
 
   useEffect(() => {
     loadSummary().catch(console.error);
-    const t = setInterval(() => loadSummary().catch(console.error), SUMMARY_MS);
+    const t = setInterval(() => visivel() && loadSummary().catch(console.error), SUMMARY_MS);
     return () => clearInterval(t);
   }, [loadSummary]);
+
+  const detailRef = useRef<Detail | null>(null);
+  detailRef.current = detail;
+  // Conversa aberta: busca tudo uma vez e depois só as mensagens novas.
+  const pollMsgs = useCallback(async () => {
+    const d = detailRef.current;
+    if (!selected || !d || d.conversation.id !== selected) return;
+    const last = d.messages[d.messages.length - 1]?.created_at;
+    const novos = await api<Message[]>(`/api/conversations/${selected}/messages${last ? `?after=${encodeURIComponent(last)}` : ""}`);
+    if (!novos.length) return;
+    setDetail((cur) =>
+      cur && cur.conversation.id === selected
+        ? { ...cur, messages: [...cur.messages, ...novos.filter((n) => !cur.messages.some((m) => m.id === n.id))] }
+        : cur,
+    );
+  }, [selected]);
 
   useEffect(() => {
     setDetail(null);
     loadDetail().catch(console.error);
-    const t = setInterval(() => loadDetail().catch(console.error), POLL_MS);
-    return () => clearInterval(t);
-  }, [loadDetail]);
+    const t1 = setInterval(() => visivel() && pollMsgs().catch(console.error), MSG_MS);
+    const t2 = setInterval(() => visivel() && loadDetail().catch(console.error), 30000);
+    return () => {
+      clearInterval(t1);
+      clearInterval(t2);
+    };
+  }, [loadDetail, pollMsgs]);
 
   // Atualiza os tempos de espera a cada minuto, mesmo sem mensagens novas.
   useEffect(() => {

@@ -136,6 +136,10 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
   return q;
 }
 
+/** Lista leve: só os campos que a lista mostra (bem menor que a conversa completa). */
+export const LIST_SELECT =
+  "id, status, assigned_to, department_id, connection_id, contact_id, unread_count, last_message_at, last_message_preview, waiting_since, created_at, contact:contacts!inner(id, name, phone, is_group), department:departments(id, name, color), agent:agents(id, name), connection:whatsapp_connections(id, name, phone)";
+
 /** Conversas com o contato junto (inner join, para poder filtrar por grupo). */
 export const CONVERSATION_SELECT =
   "*, contact:contacts!inner(*), department:departments(id, name, color), agent:agents(id, name), connection:whatsapp_connections(id, name, phone)";

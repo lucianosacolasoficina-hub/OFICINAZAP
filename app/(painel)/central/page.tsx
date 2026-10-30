@@ -51,7 +51,7 @@ function Coluna({ conn, stats, onAbrir, aberta }: { conn: Conn; stats?: Stats; o
 
   useEffect(() => {
     const t0 = setTimeout(() => carregar().catch(() => {}), q ? 300 : 0);
-    const t = setInterval(() => carregar().catch(() => {}), 8000);
+    const t = setInterval(() => !document.hidden && carregar().catch(() => {}), 10000);
     return () => {
       clearTimeout(t0);
       clearInterval(t);
@@ -124,7 +124,7 @@ export default function CentralPage() {
   useEffect(() => {
     const ler = () => api<Summary>("/api/conversations/summary?view=todas&queue=todas").then(setSum).catch((e) => setErro(e.message));
     ler();
-    const t = setInterval(ler, 15000);
+    const t = setInterval(() => !document.hidden && ler(), 30000);
     return () => clearInterval(t);
   }, []);
 

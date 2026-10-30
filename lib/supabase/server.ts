@@ -22,8 +22,14 @@ export async function supabaseServer() {
   );
 }
 
-export async function currentUser() {
+/** Usuário logado. Confere o token localmente (rápido); se não der, pergunta ao Supabase. */
+export async function currentUser(): Promise<{ id: string; email?: string } | null> {
   const supabase = await supabaseServer();
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    const sub = data?.claims?.sub;
+    if (!error && typeof sub === "string") return { id: sub, email: data?.claims?.email as string | undefined };
+  } catch {}
   const { data } = await supabase.auth.getUser();
-  return data.user;
+  return data.user ? { id: data.user.id, email: data.user.email ?? undefined } : null;
 }

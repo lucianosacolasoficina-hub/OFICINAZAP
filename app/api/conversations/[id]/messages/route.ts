@@ -33,3 +33,14 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
     wa_message_id: sent.waMessageId ?? null,
   });
 });
+
+// Só as mensagens novas desde `after` (a tela pergunta a cada poucos segundos, sem baixar tudo de novo).
+export const GET = route<IdCtx>(async (req, { params }) => {
+  const { id } = await params;
+  const after = new URL(req.url).searchParams.get("after");
+  let q = supabaseAdmin().from("messages").select("*").eq("conversation_id", id).order("created_at", { ascending: true }).limit(200);
+  if (after) q = q.gt("created_at", after);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return data ?? [];
+});

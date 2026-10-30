@@ -1,7 +1,7 @@
 import { HttpError, route } from "@/lib/api";
 import { getConnection } from "@/lib/connections";
 import { activeConversation, updateConversation, upsertContact } from "@/lib/db";
-import { applyFilter, CONVERSATION_SELECT, loadLookups, parseFilter } from "@/lib/inbox";
+import { applyFilter, LIST_SELECT, loadLookups, parseFilter } from "@/lib/inbox";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async (req, _ctx, userId) => {
@@ -9,9 +9,9 @@ export const GET = route(async (req, _ctx, userId) => {
   const lookups = await loadLookups(userId, filter.stage ? [filter.stage] : [], filter.search);
   const query = supabaseAdmin()
     .from("conversations")
-    .select(CONVERSATION_SELECT)
+    .select(LIST_SELECT)
     .order("last_message_at", { ascending: false })
-    .limit(200);
+    .limit(150);
   const { data, error } = await applyFilter(query, filter, userId, lookups);
   if (error) throw new Error(error.message);
   return data;

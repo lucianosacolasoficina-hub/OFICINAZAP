@@ -22,7 +22,21 @@ export type Agent = {
   active: boolean;
 };
 
+// Guarda o atendente por 20 segundos para não consultar o banco a cada pedido.
+const cacheAgent = new Map<string, { t: number; a: Agent | null }>();
+export function limparCacheAgent() {
+  cacheAgent.clear();
+}
+
 export async function getAgent(userId: string): Promise<Agent | null> {
+  const c = cacheAgent.get(userId);
+  if (c && Date.now() - c.t < 20_000) return c.a;
+  const a = await lerAgent(userId);
+  cacheAgent.set(userId, { t: Date.now(), a });
+  return a;
+}
+
+async function lerAgent(userId: string): Promise<Agent | null> {
   const { data } = await supabaseAdmin().from("agents").select("*").eq("id", userId).maybeSingle();
   if (!data) return null;
   return {

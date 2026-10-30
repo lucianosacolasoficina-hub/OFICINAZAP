@@ -1,4 +1,5 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
+import { limparCacheAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 /** Altera nome, papel, permissões, situação (ativo) ou senha de um atendente. */
@@ -14,6 +15,7 @@ export const PATCH = route(async (req, ctx: IdCtx, userId) => {
   if (b.role === "admin" || b.role === "agent") patch.role = b.role;
   if (b.permissions && typeof b.permissions === "object") patch.permissions = b.permissions;
   if (typeof b.active === "boolean") patch.active = b.active;
+  limparCacheAgent();
   if (Object.keys(patch).length) {
     const { error } = await db.from("agents").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
