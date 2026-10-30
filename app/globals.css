@@ -191,3 +191,12 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; }
 .eq-perms { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
 .modal label.eq-perm { flex-direction: row; align-items: flex-start; gap: 8px; color: inherit; }
 .eq-perm input { margin-top: 3px; }
+
+/* Pedir dados de cadastro */
+.pd-wrap { position: relative; }
+button.pd-cta { background: #1fa855; border-color: #1fa855; color: #fff; border-radius: 99px; padding: 7px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+button.pd-cta small { background: rgba(255,255,255,.22); border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.pd-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); padding: 6px; display: flex; flex-direction: column; gap: 4px; width: 280px; }
+.pd-menu button { text-align: left; display: grid; grid-template-columns: 24px 1fr; column-gap: 6px; border: 0; padding: 8px; }
+.pd-menu button small { grid-column: 2; color: var(--muted); font-size: 12px; }
+.pd-dica { font-size: 12px; color: var(--muted); padding: 4px 8px; }

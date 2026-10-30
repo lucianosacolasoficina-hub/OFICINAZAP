@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/lib/useMe";
+import { msgCadastro } from "@/lib/cadastroMsg";
 import {
   api,
   avatarColor,
@@ -542,6 +543,7 @@ function Chat({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [qrIndex, setQrIndex] = useState(0);
+  const [pdOpen, setPdOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const lastId = messages[messages.length - 1]?.id;
 
@@ -604,6 +606,24 @@ function Chat({
             )}
           </div>
         </div>
+        {c.status !== "closed" && !c.contact.is_group && (
+          <span className="pd-wrap">
+            <button className="pd-cta" onClick={() => setPdOpen((v) => !v)} title="Mensagem pronta para pedir ao cliente os dados do cadastro">
+              💬 Pedir dados de cadastro <small>WhatsApp</small>
+            </button>
+            {pdOpen && (
+              <span className="pd-menu">
+                <button onClick={() => { setText(msgCadastro("PJ")); setPdOpen(false); }}>
+                  🏢 <b>Empresa</b><small>pede CNPJ e inscrição estadual</small>
+                </button>
+                <button onClick={() => { setText(msgCadastro("PF")); setPdOpen(false); }}>
+                  👤 <b>Pessoa física</b><small>pede CPF e nascimento</small>
+                </button>
+                <span className="pd-dica">A mensagem vai para a caixa de texto: revise e clique em Enviar.</span>
+              </span>
+            )}
+          </span>
+        )}
         {c.status !== "closed" && departments.length > 0 && (
           <select
             value=""
