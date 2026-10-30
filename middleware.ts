@@ -21,7 +21,7 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  if (!data.user && path !== "/login" && path !== "/api/auth/sso") {
+  if (!data.user && path !== "/login" && path !== "/api/auth/sso" && path !== "/api/lula") {
     if (path.startsWith("/api/")) {
       return NextResponse.json({ error: "não autenticado" }, { status: 401 });
     }

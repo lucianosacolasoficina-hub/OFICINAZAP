@@ -544,6 +544,16 @@ function Chat({
   const [error, setError] = useState("");
   const [qrIndex, setQrIndex] = useState(0);
   const [pdOpen, setPdOpen] = useState(false);
+  const [lula, setLula] = useState<{ open: boolean; busy: boolean; out: string; acao: string; q: string }>({ open: false, busy: false, out: "", acao: "", q: "" });
+  async function perguntarLula(acao: "sugerir" | "resumir" | "perguntar") {
+    setLula((l) => ({ ...l, busy: true, out: "", acao }));
+    try {
+      const r = await api<{ texto: string }>(`/api/conversations/${c.id}/lula`, { method: "POST", body: JSON.stringify({ acao, texto: lula.q }) });
+      setLula((l) => ({ ...l, busy: false, out: r.texto }));
+    } catch (e) {
+      setLula((l) => ({ ...l, busy: false, out: "⚠ " + (e as Error).message }));
+    }
+  }
   const endRef = useRef<HTMLDivElement>(null);
   const lastId = messages[messages.length - 1]?.id;
 
@@ -606,6 +616,41 @@ function Chat({
             )}
           </div>
         </div>
+        <span className="pd-wrap">
+          <button className="lula-cta" onClick={() => setLula((l) => ({ ...l, open: !l.open }))} title="Lula, o assistente de IA: sugere resposta, resume a conversa e tira dúvidas">
+            🤖 Lula <small>assistente de IA</small>
+          </button>
+          {lula.open && (
+            <span className="pd-menu lula-pop">
+              <b className="lula-h">🤖 Lula · assistente de IA</b>
+              <span className="lula-acts">
+                {c.status !== "closed" && <button disabled={lula.busy} onClick={() => perguntarLula("sugerir")}>✍️ Sugerir resposta</button>}
+                <button disabled={lula.busy} onClick={() => perguntarLula("resumir")}>📝 Resumir conversa</button>
+              </span>
+              <span className="lula-ask">
+                <input
+                  value={lula.q}
+                  placeholder="Pergunte algo sobre esta conversa…"
+                  onChange={(e) => setLula((l) => ({ ...l, q: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && lula.q.trim() && !lula.busy && perguntarLula("perguntar")}
+                />
+                <button disabled={lula.busy || !lula.q.trim()} onClick={() => perguntarLula("perguntar")}>Perguntar</button>
+              </span>
+              {lula.busy && <span className="muted">Lula está pensando…</span>}
+              {lula.out && (
+                <span className="lula-out">
+                  {lula.out}
+                  {lula.acao === "sugerir" && !lula.out.startsWith("⚠") && (
+                    <button className="primary" onClick={() => { setText(lula.out); setLula((l) => ({ ...l, open: false })); }}>
+                      Usar na resposta
+                    </button>
+                  )}
+                </span>
+              )}
+              <span className="pd-dica">O Lula nunca envia nada sozinho: você revisa e clica em Enviar.</span>
+            </span>
+          )}
+        </span>
         {c.status !== "closed" && !c.contact.is_group && (
           <span className="pd-wrap">
             <button className="pd-cta" onClick={() => setPdOpen((v) => !v)} title="Mensagem pronta para pedir ao cliente os dados do cadastro">

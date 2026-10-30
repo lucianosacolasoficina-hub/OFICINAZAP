@@ -200,3 +200,15 @@ button.pd-cta small { background: rgba(255,255,255,.22); border-radius: 99px; pa
 .pd-menu button { text-align: left; display: grid; grid-template-columns: 24px 1fr; column-gap: 6px; border: 0; padding: 8px; }
 .pd-menu button small { grid-column: 2; color: var(--muted); font-size: 12px; }
 .pd-dica { font-size: 12px; color: var(--muted); padding: 4px 8px; }
+
+/* Lula, assistente de IA */
+button.lula-cta { background: #5b3df5; border-color: #5b3df5; color: #fff; border-radius: 99px; padding: 7px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+button.lula-cta small { background: rgba(255,255,255,.22); border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.pd-menu.lula-pop { width: 380px; gap: 8px; padding: 12px; }
+.lula-h { font-size: 14px; }
+.lula-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.pd-menu .lula-acts button, .pd-menu .lula-ask button { display: inline-block; border: 1px solid var(--border); padding: 6px 10px; }
+.lula-ask { display: flex; gap: 6px; }
+.lula-ask input { flex: 1; min-width: 0; }
+.lula-out { white-space: pre-wrap; background: var(--bg, #f5f6f8); border-radius: 8px; padding: 10px; font-size: 13.5px; line-height: 1.45; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.lula-out button { align-self: flex-end; }
