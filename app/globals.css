@@ -306,3 +306,9 @@ button.ch2-ic.zap { border-color: #1fa855; }
   .inbox2 .chat { min-width: 0; }
   .ch2-back { display: inline-grid !important; }
 }
+@media (max-width: 900px) {
+  .ch2-row { gap: 5px; }
+  .ch2-row > .ib-avatar { display: none; }
+  button.ch2-ic { width: 32px; height: 32px; font-size: 15px; }
+  .ch2-row > button.primary { padding: 5px 8px; }
+}
