@@ -625,6 +625,17 @@ function Chat({
           <button onClick={() => onStatus("bot")}>Devolver para IA</button>
         )}
         {c.status !== "closed" && <button onClick={() => onStatus("closed")}>Encerrar</button>}
+        <button
+          title="Apagar o histórico de mensagens desta conversa no OficinaZap"
+          onClick={async () => {
+            if (!confirm("Apagar TODO o histórico de mensagens desta conversa no OficinaZap?\n\nAs mensagens, fotos e arquivos somem daqui e não dá para recuperar. No celular as mensagens continuam. O contato, o orçamento e o funil ficam.")) return;
+            if (!confirm("Tem certeza? Esta ação não pode ser desfeita.")) return;
+            await api(`/api/conversations/${c.id}/history`, { method: "DELETE" });
+            await onSent();
+          }}
+        >
+          🗑 Apagar histórico
+        </button>
       </header>
 
       <div className="msgs">
