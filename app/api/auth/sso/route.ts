@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicUrl } from "@/lib/origin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -6,7 +7,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 // O sistema envia (POST) o token da sessão dele; conferimos esse token no Supabase do sistema
 // e abrimos a sessão do atendente que tem o mesmo e-mail no OficinaZap.
 const volta = (req: Request, motivo: string) =>
-  NextResponse.redirect(new URL(`/login?sso=${motivo}`, req.url), { status: 303 });
+  NextResponse.redirect(publicUrl(req, `/login?sso=${motivo}`), { status: 303 });
 
 export async function POST(req: Request) {
   const url = process.env.GESTAO_SUPABASE_URL, anon = process.env.GESTAO_SUPABASE_ANON_KEY;
@@ -36,5 +37,5 @@ export async function POST(req: Request) {
   const supabase = await supabaseServer();
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (e2) return volta(req, "indisponivel");
-  return NextResponse.redirect(new URL("/", req.url), { status: 303 });
+  return NextResponse.redirect(publicUrl(req, "/"), { status: 303 });
 }
