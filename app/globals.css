@@ -218,3 +218,23 @@ button.lula-cta small { background: rgba(255,255,255,.22); border-radius: 99px; 
 .at-tab th.at-grp { text-align: center; border-bottom: 1px solid var(--border); }
 button.at-n { border: 0; background: none; font-weight: 700; padding: 2px 8px; border-radius: 6px; font-size: 14px; }
 button.at-n.on { background: var(--brand); color: #fff !important; }
+
+/* Telas menores: a conversa nunca some (menu vira ícones, colunas laterais encolhem) */
+.chat { min-width: 340px; }
+.chat-head button, .chat-head select { font-size: 13px; padding: 5px 10px; }
+@media (max-width: 1600px) {
+  .nav { width: 64px; }
+  .nav .label { display: none; }
+  button.lula-cta small, button.pd-cta small { display: none; }
+}
+@media (max-width: 1300px) {
+  .list { width: 290px; }
+  .side { width: 240px; }
+  .ib-filters { width: 200px; }
+}
+@media (max-width: 1150px) {
+  .side { display: none; }
+}
+@media (max-width: 900px) {
+  .chat { min-width: 0; }
+}
