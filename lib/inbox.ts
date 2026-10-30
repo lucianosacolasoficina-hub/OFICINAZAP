@@ -1,4 +1,5 @@
 import { STAGES } from "./stages";
+import { can, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 // Filtros da tela de conversas (lado esquerdo), usados na lista e nos contadores.
@@ -19,7 +20,7 @@ export type InboxFilter = {
 };
 
 /** O que precisa ser buscado antes para montar os filtros. */
-type Lookups = { myDepartments: string[]; stageContacts: Map<string, string[]>; searchContacts: string[] | null };
+type Lookups = { myDepartments: string[]; stageContacts: Map<string, string[]>; searchContacts: string[] | null; restrito?: boolean };
 
 // Só os métodos de filtro que usamos, para aceitar tanto a lista quanto a contagem.
 type Filterable<T> = {
@@ -64,7 +65,9 @@ export async function loadLookups(userId: string, stages: string[], search?: str
   ]);
   const stageContacts = new Map<string, string[]>(stages.map((s) => [s, []]));
   for (const d of check(deals) as { contact_id: string; stage: string }[]) stageContacts.get(d.stage)?.push(d.contact_id);
+  const agent = await getAgent(userId);
   return {
+    restrito: !can(agent, "ver_todas"),
     myDepartments: (check(mine) as { department_id: string }[]).map((m) => m.department_id),
     stageContacts,
     searchContacts: q ? (check(contacts) as { id: string }[]).map((c) => c.id) : null,
@@ -73,6 +76,11 @@ export async function loadLookups(userId: string, stages: string[], search?: str
 
 export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, userId: string, lk: Lookups): T {
   let q = query;
+  // Atendente sem "ver todas as conversas": só as dele, as dos departamentos dele e a fila geral.
+  if (lk.restrito) {
+    const deps = lk.myDepartments.length ? `,department_id.in.(${lk.myDepartments.join(",")})` : "";
+    q = q.or(`assigned_to.eq.${userId}${deps},and(department_id.is.null,assigned_to.is.null)`);
+  }
   switch (f.view) {
     case "todas":
       q = q.neq("status", "closed");

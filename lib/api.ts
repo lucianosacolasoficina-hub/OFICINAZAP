@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "./supabase/server";
+import { can, getAgent, permFor } from "./perms";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -13,6 +14,12 @@ export function route<C>(handler: (req: Request, ctx: C, userId: string) => Prom
     try {
       const user = await currentUser();
       if (!user) throw new HttpError(401, "não autenticado");
+      const agent = await getAgent(user.id);
+      if (agent && !agent.active) throw new HttpError(403, "seu acesso ao OficinaZap foi desativado");
+      const need = permFor(req.method, new URL(req.url).pathname);
+      if (need === "admin" ? agent && agent.role !== "admin" : need && !can(agent, need)) {
+        throw new HttpError(403, "sem permissão para esta ação: fale com o administrador");
+      }
       const data = await handler(req, ctx, user.id);
       return NextResponse.json(data ?? { ok: true });
     } catch (err) {

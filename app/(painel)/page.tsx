@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useMe } from "@/lib/useMe";
 import {
   api,
   avatarColor,
@@ -536,6 +537,7 @@ function Chat({
   onSent: () => Promise<void>;
 }) {
   const { conversation: c, messages } = detail;
+  const me = useMe();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -625,7 +627,7 @@ function Chat({
           <button onClick={() => onStatus("bot")}>Devolver para IA</button>
         )}
         {c.status !== "closed" && <button onClick={() => onStatus("closed")}>Encerrar</button>}
-        <button
+        {me?.perms.apagar_historico && <button
           title="Apagar o histórico de mensagens desta conversa no OficinaZap"
           onClick={async () => {
             if (!confirm("Apagar TODO o histórico de mensagens desta conversa no OficinaZap?\n\nAs mensagens, fotos e arquivos somem daqui e não dá para recuperar. No celular as mensagens continuam. O contato, o orçamento e o funil ficam.")) return;
@@ -635,7 +637,7 @@ function Chat({
           }}
         >
           🗑 Apagar histórico
-        </button>
+        </button>}
       </header>
 
       <div className="msgs">
@@ -702,6 +704,7 @@ function Chat({
 
 function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Promise<void> }) {
   const contact = detail.conversation.contact;
+  const me = useMe();
   const [name, setName] = useState(contact.name ?? "");
   const [tags, setTags] = useState(contact.tags.join(", "));
   const [saving, setSaving] = useState(false);
@@ -743,7 +746,7 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
         <button onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar contato"}</button>
       </div>
 
-      <GestaoBox detail={detail} onSent={onChange} />
+      {me?.perms.sistema_gestao && <GestaoBox detail={detail} onSent={onChange} />}
 
       <h3>Orçamento coletado</h3>
       {quote.length === 0 ? (
@@ -759,8 +762,12 @@ function ContactSide({ detail, onChange }: { detail: Detail; onChange: () => Pro
         </dl>
       )}
 
-      <h3>Funil de vendas</h3>
-      {dealMsg ? <p className="muted">{dealMsg}</p> : <button onClick={addToFunnel}>Adicionar ao funil</button>}
+      {me?.perms.funil && (
+        <>
+          <h3>Funil de vendas</h3>
+          {dealMsg ? <p className="muted">{dealMsg}</p> : <button onClick={addToFunnel}>Adicionar ao funil</button>}
+        </>
+      )}
     </aside>
   );
 }
