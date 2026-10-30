@@ -1,6 +1,9 @@
 import { after, NextResponse } from "next/server";
 import { handleIncoming } from "@/lib/inbound";
 import { whatsapp } from "@/lib/whatsapp";
+import { EvolutionProvider } from "@/lib/whatsapp/evolution";
+import { connectionByInstance } from "@/lib/connections";
+import { importarMensagens } from "@/lib/historico";
 
 export const maxDuration = 60;
 
@@ -31,6 +34,19 @@ export async function POST(req: Request) {
   // Com vários números, o webhook de cada um traz o nome da instância na URL (reserva, caso não venha no corpo).
   const instance = new URL(req.url).searchParams.get("instance") ?? undefined;
   const incoming = provider.parseWebhook(payload).map((m) => ({ ...m, instance: m.instance ?? instance }));
+  // Conversas antigas (histórico) que o WhatsApp manda logo depois de conectar.
+  const hist = EvolutionProvider.parseHistorySet(payload);
+  if (hist.msgs.length) {
+    after(async () => {
+      try {
+        const conn = await connectionByInstance(hist.instance ?? instance ?? "");
+        if (conn) await importarMensagens(conn, hist.msgs);
+      } catch (err) {
+        console.error("Erro ao importar histórico", err);
+      }
+    });
+    return NextResponse.json({ ok: true, historico: hist.msgs.length });
+  }
   after(async () => {
     for (const msg of incoming) {
       try {

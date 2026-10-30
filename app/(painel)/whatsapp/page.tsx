@@ -189,6 +189,22 @@ function ConnectionCard({
 }) {
   const [menu, setMenu] = useState(false);
   const connected = conn.state === "open";
+  const [hist, setHist] = useState<{ status: string; chats?: number; feitos?: number; conversas?: number; mensagens?: number; erro?: string } | null>(null);
+  const [dias, setDias] = useState(30);
+
+  // Andamento de "Puxar conversas antigas" (atualiza enquanto estiver rodando).
+  useEffect(() => {
+    let vivo = true;
+    const ler = () => api<typeof hist>(`/api/whatsapp/${conn.id}/historico`).then((h) => vivo && setHist(h)).catch(() => {});
+    ler();
+    const t = setInterval(() => hist?.status === "rodando" && ler(), 4000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [conn.id, hist?.status]);
+
+  async function puxar() {
+    const r = await api<{ historicoCompleto: boolean }>(`/api/whatsapp/${conn.id}/historico`, { method: "POST", body: JSON.stringify({ dias }) }).catch((e) => { alert(e.message); return null; });
+    if (r) setHist({ status: "rodando", chats: 0, feitos: 0, conversas: 0, mensagens: 0 });
+  }
 
   async function logout() {
     setMenu(false);
@@ -220,6 +236,26 @@ function ConnectionCard({
         </div>
         {!connected && (
           <button className="primary" style={{ marginTop: 6 }} onClick={onQr}>Ler QR Code</button>
+        )}
+        {connected && (
+          <div className="wa-hist">
+            <select value={dias} onChange={(e) => setDias(Number(e.target.value))} disabled={hist?.status === "rodando"} title="Até quantos dias para trás">
+              <option value={7}>7 dias</option>
+              <option value={30}>30 dias</option>
+              <option value={90}>90 dias</option>
+              <option value={365}>1 ano</option>
+            </select>
+            <button onClick={puxar} disabled={hist?.status === "rodando"}>⬇ Puxar conversas antigas</button>
+            {hist && hist.status !== "nunca" && (
+              <div className="muted" style={{ fontSize: 12.5 }}>
+                {hist.status === "rodando"
+                  ? `Puxando… ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens`
+                  : hist.status === "erro"
+                    ? `Erro ao puxar: ${hist.erro}`
+                    : `Última vez: ${hist.chats ?? 0} conversas encontradas, ${hist.conversas ?? 0} novas, ${hist.mensagens ?? 0} mensagens trazidas.`}
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="wa-menu">

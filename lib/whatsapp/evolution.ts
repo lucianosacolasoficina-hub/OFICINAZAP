@@ -12,6 +12,26 @@ type EvolutionMessage = {
   stickerMessage?: unknown;
 };
 
+/** Mensagem antiga (histórico) já convertida, nossa ou do cliente. */
+export type HistMsg = {
+  waMessageId: string;
+  jid: string;
+  phone: string;
+  isGroup: boolean;
+  fromMe: boolean;
+  name?: string;
+  text: string;
+  mediaType?: string;
+  ts: number;
+};
+
+type EvolutionRecord = {
+  key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string; participant?: string; fromMe?: boolean; id?: string };
+  pushName?: string | null;
+  message?: EvolutionMessage | null;
+  messageTimestamp?: number | string | { low?: number };
+};
+
 type EvolutionUpsert = {
   event?: string;
   instance?: string;
@@ -85,7 +105,8 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   /** Cria a instância se preciso, aponta o webhook para o sistema e devolve o QR Code (imagem base64). */
   async connect(webhookUrl: string, phone?: string): Promise<{ state: string; qr?: string; pairingCode?: string }> {
-    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT"] };
+    // MESSAGES_SET: o WhatsApp manda as conversas antigas logo depois de conectar (histórico).
+    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT", "MESSAGES_SET"] };
     let state = await this.connectionState();
     if (state === "missing") {
       const created = await this.call<{ qrcode?: { base64?: string } }>("POST", "/instance/create", {
@@ -156,6 +177,93 @@ export class EvolutionProvider implements WhatsAppProvider {
         isGroup,
       },
     ];
+  }
+
+  /** Liga a sincronização do histórico completo (vale na próxima vez que o celular conectar). */
+  async ligarHistoricoCompleto() {
+    const atual = await this.call<Record<string, unknown>>("GET", `/settings/find/${this.instance}`);
+    const base = atual.status < 400 && atual.data && typeof atual.data === "object" ? atual.data : {};
+    const body = {
+      rejectCall: false,
+      msgCall: "",
+      groupsIgnore: false,
+      alwaysOnline: false,
+      readMessages: false,
+      readStatus: false,
+      ...Object.fromEntries(Object.entries(base).filter(([k]) => ["rejectCall", "msgCall", "groupsIgnore", "alwaysOnline", "readMessages", "readStatus"].includes(k))),
+      syncFullHistory: true,
+    };
+    const r = await this.call("POST", `/settings/set/${this.instance}`, body);
+    return r.status < 400;
+  }
+
+  /** Conversas que a Evolution guardou para este número. */
+  async findChats(): Promise<{ remoteJid: string; name?: string | null; pushName?: string | null; updatedAt?: string | null }[]> {
+    const { status, data } = await this.call<unknown>("POST", `/chat/findChats/${this.instance}`, {});
+    if (status >= 400 || !Array.isArray(data)) return [];
+    return data as { remoteJid: string; name?: string | null; pushName?: string | null; updatedAt?: string | null }[];
+  }
+
+  /** Mensagens guardadas de uma conversa (mais novas primeiro, em páginas). */
+  async findMessages(remoteJid: string, page = 1, offset = 100): Promise<EvolutionRecord[]> {
+    const { status, data } = await this.call<unknown>("POST", `/chat/findMessages/${this.instance}`, {
+      where: { key: { remoteJid } },
+      page,
+      offset,
+    });
+    if (status >= 400) return [];
+    const d = data as { messages?: { records?: EvolutionRecord[] } } | EvolutionRecord[];
+    return Array.isArray(d) ? d : (d.messages?.records ?? []);
+  }
+
+  /** Converte uma mensagem guardada/antiga (inclusive as que nós enviamos). */
+  static parseRecord(rec: EvolutionRecord): HistMsg | null {
+    const key = rec.key;
+    const message = rec.message;
+    if (!key?.id || !message) return null;
+    let jid = key.remoteJid ?? "";
+    if (jid.endsWith("@lid")) jid = key.remoteJidAlt ?? key.senderPn ?? jid;
+    const isGroup = jid.endsWith("@g.us");
+    if (!(isGroup || jid.endsWith("@s.whatsapp.net"))) return null;
+    let text =
+      message.conversation ??
+      message.extendedTextMessage?.text ??
+      message.imageMessage?.caption ??
+      message.videoMessage?.caption ??
+      message.documentMessage?.caption ??
+      "";
+    let mediaType: string | undefined;
+    if (message.imageMessage) mediaType = "image";
+    else if (message.audioMessage) mediaType = "audio";
+    else if (message.videoMessage) mediaType = "video";
+    else if (message.documentMessage) mediaType = "document";
+    else if (message.stickerMessage) mediaType = "sticker";
+    if (!text && message.documentMessage?.fileName) text = message.documentMessage.fileName;
+    if (!text && !mediaType) return null;
+    const author = isGroup && !key.fromMe ? rec.pushName || key.participant?.split("@")[0] : undefined;
+    if (author) text = `${author}: ${text || `[${mediaType}]`}`;
+    const t = rec.messageTimestamp;
+    const ts = Number(typeof t === "object" && t ? t.low : t) || 0;
+    return {
+      waMessageId: key.id,
+      jid,
+      phone: jid.split("@")[0],
+      isGroup,
+      fromMe: !!key.fromMe,
+      name: key.fromMe ? undefined : rec.pushName ?? undefined,
+      text: text || "",
+      mediaType,
+      ts: ts > 1e12 ? Math.floor(ts / 1000) : ts,
+    };
+  }
+
+  /** Mensagens antigas que chegam no webhook "messages.set" (logo depois de conectar). */
+  static parseHistorySet(payload: unknown): { instance?: string; msgs: HistMsg[] } {
+    const body = payload as { event?: string; instance?: string; data?: unknown };
+    if (body.event !== "messages.set") return { msgs: [] };
+    const d = body.data as { messages?: EvolutionRecord[] } | EvolutionRecord[] | undefined;
+    const recs = Array.isArray(d) ? d : (d?.messages ?? []);
+    return { instance: body.instance, msgs: recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m) };
   }
 
   async groupName(groupId: string) {

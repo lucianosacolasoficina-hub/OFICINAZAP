@@ -268,3 +268,5 @@ button.at-n.on { background: var(--brand); color: #fff !important; }
 .num-stats b { font-size: 18px; color: var(--text, #111); }
 .num-stats b.w { color: #d97706; } .num-stats b.g { color: #16a34a; } .num-stats b.v { color: #5b3df5; }
 .num-alerta { margin: 0; font-size: 12.5px; color: #b91c1c; background: #fef2f2; border-radius: 8px; padding: 6px 8px; }
+.wa-hist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.wa-hist select { width: auto; }

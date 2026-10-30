@@ -1,0 +1,111 @@
+import type { Connection } from "./connections";
+import { setSetting, upsertContact, upsertGroup } from "./db";
+import { supabaseAdmin } from "./supabase/admin";
+import { EvolutionProvider, type HistMsg } from "./whatsapp/evolution";
+
+// Conversas antigas do WhatsApp (histórico) entram no OficinaZap sem acionar a IA e sem notificar.
+// Conversa antiga fica "encerrada"; só fica aguardando se a última mensagem for do cliente nos últimos 2 dias.
+
+export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
+  const db = supabaseAdmin();
+  const porChat = new Map<string, HistMsg[]>();
+  for (const m of msgs) {
+    if (!m.ts) continue;
+    const l = porChat.get(m.jid) ?? [];
+    l.push(m);
+    porChat.set(m.jid, l);
+  }
+  let conversas = 0;
+  let mensagens = 0;
+  for (const [, lista] of porChat) {
+    lista.sort((a, b) => a.ts - b.ts);
+    const ult = lista[lista.length - 1];
+    const nome = lista.find((m) => !m.fromMe && m.name)?.name;
+    const contato = ult.isGroup ? await upsertGroup(ult.phone) : await upsertContact(ult.phone, nome);
+    // Usa a conversa mais recente desse cliente neste número; se não houver, cria uma.
+    const { data: existente } = await db
+      .from("conversations")
+      .select("id, last_message_at, status")
+      .eq("contact_id", contato.id)
+      .eq("connection_id", conn.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const ultIso = new Date(ult.ts * 1000).toISOString();
+    const recente = !ult.fromMe && !ult.isGroup && Date.now() - ult.ts * 1000 < 2 * 864e5;
+    let convId = existente?.id as string | undefined;
+    if (!convId) {
+      const { data: nova, error } = await db
+        .from("conversations")
+        .insert({
+          contact_id: contato.id,
+          connection_id: conn.id,
+          department_id: conn.department_id,
+          status: recente ? "waiting" : "closed",
+          last_message_at: ultIso,
+          last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200),
+          waiting_since: recente ? ultIso : null,
+          unread_count: 0,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      convId = nova.id;
+      conversas++;
+    } else if (!existente?.last_message_at || existente.last_message_at < ultIso) {
+      await db.from("conversations").update({ last_message_at: ultIso, last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200) }).eq("id", convId);
+    }
+    const linhas = lista.map((m) => ({
+      conversation_id: convId,
+      direction: m.fromMe ? "out" : "in",
+      sender: m.fromMe ? "agent" : "contact",
+      body: m.text || "",
+      media_type: m.mediaType ?? null,
+      wa_message_id: m.waMessageId,
+      created_at: new Date(m.ts * 1000).toISOString(),
+    }));
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { error, count } = await db
+        .from("messages")
+        .upsert(linhas.slice(i, i + 500), { onConflict: "wa_message_id", ignoreDuplicates: true, count: "exact" });
+      if (error) throw new Error(error.message);
+      mensagens += count ?? 0;
+    }
+  }
+  return { conversas, mensagens };
+}
+
+/** Puxa da Evolution as conversas guardadas deste número (últimos `dias` dias). Grava o andamento em settings. */
+export async function puxarHistorico(conn: Connection, dias: number) {
+  const chave = `historico_${conn.id}`;
+  const ev = new EvolutionProvider(conn.instance);
+  const desde = Date.now() / 1000 - dias * 86400;
+  const andamento = { status: "rodando", inicio: new Date().toISOString(), dias, chats: 0, feitos: 0, conversas: 0, mensagens: 0, erro: "" };
+  await setSetting(chave, andamento);
+  try {
+    const chats = (await ev.findChats()).filter(
+      (c) => c.remoteJid && /@(s\.whatsapp\.net|g\.us|lid)$/.test(c.remoteJid) && (!c.updatedAt || new Date(c.updatedAt).getTime() / 1000 >= desde),
+    );
+    andamento.chats = chats.length;
+    await setSetting(chave, andamento);
+    for (const c of chats.slice(0, 500)) {
+      const msgs: HistMsg[] = [];
+      for (let page = 1; page <= 5; page++) {
+        const recs = await ev.findMessages(c.remoteJid, page, 100);
+        const parsed = recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m);
+        msgs.push(...parsed.filter((m) => m.ts >= desde));
+        if (recs.length < 100 || parsed.some((m) => m.ts < desde)) break;
+      }
+      if (msgs.length) {
+        const r = await importarMensagens(conn, msgs);
+        andamento.conversas += r.conversas;
+        andamento.mensagens += r.mensagens;
+      }
+      andamento.feitos++;
+      if (andamento.feitos % 10 === 0) await setSetting(chave, andamento);
+    }
+    await setSetting(chave, { ...andamento, status: "ok", fim: new Date().toISOString() });
+  } catch (err) {
+    await setSetting(chave, { ...andamento, status: "erro", erro: (err as Error).message });
+  }
+}
