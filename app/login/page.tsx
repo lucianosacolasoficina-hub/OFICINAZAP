@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export default function LoginPage() {
@@ -8,6 +8,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Mensagem quando a entrada direta pelo sistema de gestão não deu certo.
+  useEffect(() => {
+    const m = new URLSearchParams(window.location.search).get("sso");
+    const msgs: Record<string, string> = {
+      "sem-acesso": "Seu e-mail do sistema de gestão ainda não tem acesso ao OficinaZap. Peça ao administrador para cadastrar você em Equipe e permissões (com o mesmo e-mail).",
+      desativado: "Seu acesso ao OficinaZap foi desativado. Fale com o administrador.",
+      sessao: "Não foi possível confirmar sua sessão do sistema de gestão. Entre de novo no sistema ou use e-mail e senha abaixo.",
+      indisponivel: "A entrada direta pelo sistema está indisponível agora. Use e-mail e senha abaixo.",
+    };
+    if (m && msgs[m]) setError(msgs[m]);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
