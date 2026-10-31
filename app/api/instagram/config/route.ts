@@ -1,5 +1,5 @@
 import { route, HttpError } from "@/lib/api";
-import { getIgConfig, saveIgConfig } from "@/lib/instagram";
+import { getIgConfig, saveIgConfig, igUrl } from "@/lib/instagram";
 import { publicUrl } from "@/lib/origin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -15,10 +15,10 @@ export const GET = route(async (req) => {
     app_id: cfg.app_id,
     tem_chave: !!cfg.app_secret,
     verify_token: cfg.verify_token,
-    webhook_url: publicUrl(req, "/api/webhooks/instagram").toString(),
-    redirect_uri: publicUrl(req, "/api/instagram/callback").toString(),
-    privacidade_url: publicUrl(req, "/privacidade").toString(),
-    exclusao_url: publicUrl(req, "/exclusao-de-dados").toString(),
+    webhook_url: igUrl("/api/webhooks/instagram"),
+    redirect_uri: igUrl("/api/instagram/callback"),
+    privacidade_url: igUrl("/privacidade"),
+    exclusao_url: igUrl("/exclusao-de-dados"),
     contas: contas ?? [],
   };
 });

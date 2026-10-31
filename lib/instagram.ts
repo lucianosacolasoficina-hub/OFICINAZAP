@@ -5,6 +5,9 @@ import { supabaseAdmin } from "./supabase/admin";
 // O app da Meta (App ID e chave secreta) e os tokens ficam em tabelas que só o servidor lê.
 
 const GRAPH = "https://graph.instagram.com/v23.0";
+// Endereço fixo usado com a Meta (o redirecionamento precisa ser exatamente igual ao cadastrado no app).
+export const IG_BASE = process.env.IG_BASE_URL || "https://zap.sacolasoficina.com.br";
+export const igUrl = (path: string) => new URL(path, IG_BASE).toString();
 export const IG_SCOPES = ["instagram_business_basic", "instagram_business_manage_messages"];
 
 export type IgConfig = { app_id: string | null; app_secret: string | null; verify_token: string };

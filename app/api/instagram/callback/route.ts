@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { currentUser } from "@/lib/supabase/server";
 import { getAgent } from "@/lib/perms";
-import { assinarWebhook, getIgConfig, trocarCodigo } from "@/lib/instagram";
+import { assinarWebhook, getIgConfig, trocarCodigo, igUrl } from "@/lib/instagram";
 import { publicUrl } from "@/lib/origin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (!code) return volta("cancelado");
   try {
     const cfg = await getIgConfig();
-    const r = await trocarCodigo(cfg, code, publicUrl(req, "/api/instagram/callback").toString());
+    const r = await trocarCodigo(cfg, code, igUrl("/api/instagram/callback"));
     const db = supabaseAdmin();
     const instance = `ig:${r.igUserId}`;
     const nome = `Instagram${r.username ? ` @${r.username}` : ""}`;
