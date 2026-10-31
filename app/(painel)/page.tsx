@@ -38,6 +38,8 @@ type Summary = {
   numeros?: Record<string, NumStats>;
   me: string;
   atendentes?: { id: string; name: string; abertas: number }[];
+  /** Limites do alerta de espera e da retomada de orçamentos (Configurações). */
+  alertas?: { espera_min: number; retomar_dias: number };
 };
 
 const VIEWS = [
@@ -45,6 +47,7 @@ const VIEWS = [
   { key: "minhas", label: "Minhas", icon: "user" },
   { key: "pendentes", label: "Pendentes", icon: "hourglass" },
   { key: "enviadas", label: "Enviadas", icon: "send" },
+  { key: "retomar", label: "Retomar", icon: "retry" },
   { key: "grupos", label: "Grupos", icon: "users" },
   { key: "robo", label: "Robô", icon: "bot" },
   { key: "equipe", label: "Equipe", icon: "team" },
@@ -63,8 +66,26 @@ const POLL_MS = 8000; // lista de conversas
 const MSG_MS = 3000; // mensagens novas da conversa aberta (só as novas)
 const SUMMARY_MS = 30000; // contadores
 const visivel = () => typeof document === "undefined" || !document.hidden;
-/** Acima disso o tempo de espera fica vermelho. */
-const LATE_MIN = 60;
+/** Acima disso o tempo de espera fica vermelho (até carregar o valor de Configurações). */
+const LATE_MIN = 30;
+const RETOMAR_DIAS = 2;
+
+/** Bipe curto (sem arquivo de som) para avisar que tem cliente esperando demais. */
+function bipe() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.4);
+    o.onended = () => ctx.close();
+  } catch {}
+}
 
 function count(n: number | undefined) {
   if (n === undefined) return "";
@@ -177,6 +198,34 @@ export default function InboxPage() {
     const t = setInterval(() => visivel() && loadSummary().catch(console.error), SUMMARY_MS);
     return () => clearInterval(t);
   }, [loadSummary]);
+
+  const lateMin = summary?.alertas?.espera_min ?? LATE_MIN;
+  const retomarDias = summary?.alertas?.retomar_dias ?? RETOMAR_DIAS;
+  const atrasadas = summary?.views.atrasadas ?? 0;
+  const [avisoPerm, setAvisoPerm] = useState<string>("granted");
+  useEffect(() => {
+    if (typeof Notification !== "undefined") setAvisoPerm(Notification.permission);
+  }, []);
+  // Alerta de cliente esperando: número na aba do navegador e, quando aumenta, bipe + notificação.
+  const atrasadasAntes = useRef<number | null>(null);
+  useEffect(() => {
+    if (!summary) return;
+    const base = document.title.replace(/^\(\d+\+?\) /, "");
+    document.title = atrasadas > 0 ? `(${atrasadas > 99 ? "99+" : atrasadas}) ${base}` : base;
+    const antes = atrasadasAntes.current;
+    atrasadasAntes.current = atrasadas;
+    if (antes === null || atrasadas <= antes) return;
+    bipe();
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification("OficinaZap: cliente esperando", {
+          body: `${atrasadas} ${atrasadas === 1 ? "cliente está" : "clientes estão"} esperando resposta há mais de ${lateMin} min.`,
+          tag: "oz-espera",
+        });
+      }
+    } catch {}
+  }, [summary, atrasadas, lateMin]);
+  useEffect(() => () => { document.title = document.title.replace(/^\(\d+\+?\) /, ""); }, []);
 
   const detailRef = useRef<Detail | null>(null);
   detailRef.current = detail;
@@ -428,6 +477,33 @@ export default function InboxPage() {
           </button>
         </div>
 
+        {(atrasadas > 0 || view === "atrasadas") && (
+          <div className={`ib-alerta${view === "atrasadas" ? " on" : ""}`} role="alert">
+            <span>
+              ⚠ <b>{atrasadas}</b> {atrasadas === 1 ? "cliente esperando" : "clientes esperando"} resposta há mais de {lateMin} min
+            </span>
+            {view === "atrasadas" ? (
+              <button onClick={() => setView("todas")}>Voltar para todas</button>
+            ) : (
+              <button className="primary" onClick={() => setView("atrasadas")}>Ver quem está esperando</button>
+            )}
+            {avisoPerm === "default" && (
+              <button
+                title="Mostra um aviso no computador quando um cliente passar do tempo de espera"
+                onClick={() => Notification.requestPermission().then(setAvisoPerm).catch(() => {})}
+              >
+                🔔 Ativar avisos
+              </button>
+            )}
+          </div>
+        )}
+        {view === "retomar" && (
+          <div className="ib-dica-topo">
+            Orçamentos e conversas em que <b>nós</b> mandamos a última mensagem e o cliente não responde há mais de {retomarDias}{" "}
+            {retomarDias === 1 ? "dia" : "dias"} (até 30 dias). Abra a conversa e use <b>🔁 Escrever retomada</b>.
+          </div>
+        )}
+
         <div className="view-chips" role="tablist" aria-label="Situação">
           {VIEWS.map((v) => (
             <button key={v.key} className={view === v.key ? "on" : ""} onClick={() => setView(v.key)}>
@@ -448,7 +524,7 @@ export default function InboxPage() {
             <p className="muted" style={{ padding: 16 }}>{query ? `Nada encontrado para "${query}".` : "Nenhuma conversa aqui."}</p>
           )}
           {list?.map((c) => (
-            <ConversationItem key={c.id} c={c} me={summary?.me} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} mostrarNumero={!numero && (summary?.connections.length ?? 0) > 1} />
+            <ConversationItem key={c.id} c={c} me={summary?.me} lateMin={lateMin} retomar={view === "retomar"} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} mostrarNumero={!numero && (summary?.connections.length ?? 0) > 1} />
           ))}
         </div>
       </aside>
@@ -458,6 +534,7 @@ export default function InboxPage() {
           <Chat
             detail={detail}
             quickReplies={quickReplies}
+            retomarDias={retomarDias}
             departments={departments}
             onStatus={setStatus}
             onTransfer={transfer}
@@ -553,10 +630,10 @@ function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: numb
   );
 }
 
-function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero }: { c: ConvRow; me?: string; on: boolean; onClick: () => void; arrastar?: boolean; mostrarNumero?: boolean }) {
+function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin = LATE_MIN, retomar }: { c: ConvRow; me?: string; on: boolean; onClick: () => void; arrastar?: boolean; mostrarNumero?: boolean; lateMin?: number; retomar?: boolean }) {
   const name = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
   const waiting = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
-  const late = waiting && Date.now() - new Date(waiting).getTime() > LATE_MIN * 60_000;
+  const late = waiting && Date.now() - new Date(waiting).getTime() > lateMin * 60_000;
   return (
     <div
       className={`ib-item ${on ? "on" : ""} ${c.unread_count > 0 ? "has-unread" : ""}`}
@@ -586,6 +663,11 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero }: { c: 
             <span />
           )}
           <span className="ib-right">
+            {retomar && (
+              <span className="ib-chip ib-retomar" title="Tempo desde a nossa última mensagem, sem resposta do cliente">
+                <Icon name="retry" size={12} /> sem resposta há {formatSince(c.last_message_at)}
+              </span>
+            )}
             {waiting && (
               <span className={`ib-wait ${late ? "late" : ""}`} title="Tempo esperando resposta">
                 <Icon name="hourglass" size={12} />
@@ -692,6 +774,7 @@ function NewChatModal({
 function Chat({
   detail,
   quickReplies,
+  retomarDias = RETOMAR_DIAS,
   departments,
   onStatus,
   onTransfer,
@@ -706,6 +789,7 @@ function Chat({
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
+  retomarDias?: number;
   departments: Department[];
   onStatus: (s: ConversationStatus) => void;
   onTransfer: (departmentId: string | null) => void;
@@ -963,6 +1047,22 @@ function Chat({
         })}
         <div ref={endRef} />
       </div>
+
+      {c.status !== "closed" && !c.contact.is_group && c.last_from_me && Date.now() - new Date(c.last_message_at).getTime() > retomarDias * 864e5 && (
+        <div className="retomar-bar">
+          <span>🔁 O cliente não responde há {formatSince(c.last_message_at)} desde a nossa última mensagem.</span>
+          <button
+            className="primary"
+            disabled={lula.busy}
+            onClick={() => {
+              setLula((l) => ({ ...l, open: true }));
+              perguntarLula("followup");
+            }}
+          >
+            {lula.busy && lula.acao === "followup" ? "Escrevendo…" : "Escrever retomada"}
+          </button>
+        </div>
+      )}
 
       {c.status === "closed" ? (
         <div className="composer muted">Conversa encerrada. Se o cliente escrever de novo, uma nova conversa é aberta.</div>

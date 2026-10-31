@@ -1,9 +1,10 @@
 import { getEtapas } from "./crm";
+import { getAlertas } from "./alertas";
 import { can, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 // Filtros da tela de conversas (lado esquerdo), usados na lista e nos contadores.
-export const VIEWS = ["todas", "minhas", "pendentes", "enviadas", "grupos", "robo", "equipe", "fechadas"] as const;
+export const VIEWS = ["todas", "minhas", "pendentes", "enviadas", "retomar", "grupos", "robo", "equipe", "fechadas", "atrasadas"] as const;
 export const QUEUES = ["todas", "minhas", "departamento", "geral"] as const;
 
 export type View = (typeof VIEWS)[number];
@@ -24,7 +25,17 @@ export type InboxFilter = {
 };
 
 /** O que precisa ser buscado antes para montar os filtros. */
-type Lookups = { myDepartments: string[]; stageContacts: Map<string, string[]>; searchContacts: string[] | null; restrito?: boolean };
+type Lookups = {
+  myDepartments: string[];
+  stageContacts: Map<string, string[]>;
+  searchContacts: string[] | null;
+  restrito?: boolean;
+  /** Cliente esperando desde antes disso = atrasado (alerta). */
+  atrasoAntes: string;
+  /** Orçamento sem resposta: nossa última mensagem entre estas duas datas. */
+  retomarAntes: string;
+  retomarDepois: string;
+};
 
 // Só os métodos de filtro que usamos, para aceitar tanto a lista quanto a contagem.
 type Filterable<T> = {
@@ -32,6 +43,8 @@ type Filterable<T> = {
   neq(column: string, value: unknown): T;
   is(column: string, value: null | boolean): T;
   in(column: string, values: readonly unknown[]): T;
+  lt(column: string, value: unknown): T;
+  gt(column: string, value: unknown): T;
   or(filters: string): T;
 };
 
@@ -44,6 +57,9 @@ function check<T>(res: { data: T | null; error: { message: string } | null }): T
 function cleanSearch(q: string) {
   return q.replace(/[,()*%\\:"]/g, " ").trim();
 }
+
+/** Orçamentos parados há mais tempo que isso já não aparecem em "Retomar". */
+const RETOMAR_JANELA_DIAS = 30;
 
 export function parseFilter(params: URLSearchParams): InboxFilter {
   const view = params.get("view") as View;
@@ -71,8 +87,12 @@ export async function loadLookups(userId: string, stages: string[], search?: str
   ]);
   const stageContacts = new Map<string, string[]>(stages.map((s) => [s, []]));
   for (const d of check(deals) as { contact_id: string; stage: string }[]) stageContacts.get(d.stage)?.push(d.contact_id);
-  const agent = await getAgent(userId);
+  const [agent, alertas] = await Promise.all([getAgent(userId), getAlertas()]);
+  const agora = Date.now();
   return {
+    atrasoAntes: new Date(agora - alertas.espera_min * 60_000).toISOString(),
+    retomarAntes: new Date(agora - alertas.retomar_dias * 864e5).toISOString(),
+    retomarDepois: new Date(agora - RETOMAR_JANELA_DIAS * 864e5).toISOString(),
     restrito: !can(agent, "ver_todas"),
     myDepartments: (check(mine) as { department_id: string }[]).map((m) => m.department_id),
     stageContacts,
@@ -113,6 +133,19 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
     case "enviadas":
       // Última mensagem foi nossa (pelo OficinaZap ou pelo celular): aguardando o cliente responder.
       q = q.eq("last_from_me", true);
+      break;
+    case "retomar":
+      // Mandamos a última mensagem (orçamento, proposta...) e o cliente sumiu há alguns dias.
+      q = q
+        .neq("status", "closed")
+        .eq("contact.is_group", false)
+        .eq("last_from_me", true)
+        .lt("last_message_at", lk.retomarAntes)
+        .gt("last_message_at", lk.retomarDepois);
+      break;
+    case "atrasadas":
+      // Cliente esperando resposta há mais tempo que o limite do alerta.
+      q = q.neq("status", "closed").eq("contact.is_group", false).lt("waiting_since", lk.atrasoAntes);
       break;
     case "fechadas":
       q = q.eq("status", "closed");

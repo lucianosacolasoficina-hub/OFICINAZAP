@@ -83,7 +83,8 @@ function BlingCard() {
   );
 }
 
-type Settings = { bot_enabled: boolean; knowledge_base: string };
+type Alertas = { espera_min: number; retomar_dias: number };
+type Settings = { bot_enabled: boolean; knowledge_base: string; alertas: Alertas };
 type QuickReply = { id: string; shortcut: string; body: string };
 
 export default function SettingsPage() {
@@ -144,6 +145,38 @@ export default function SettingsPage() {
             <div className="muted">Desligado, toda conversa nova vai direto para a fila de atendimento humano.</div>
           </span>
         </label>
+      </div>
+
+      <div className="card">
+        <strong>Alertas e retomada de orçamentos</strong>
+        <p className="muted">
+          Cliente esperando resposta há mais que o limite fica em vermelho e aparece um aviso no topo das conversas (com som e
+          notificação no computador, se você permitir). Quando a última mensagem foi nossa e o cliente não respondeu nos dias
+          escolhidos, a conversa entra no filtro <b>Retomar</b>, com o Lula pronto para escrever a mensagem de retomada.
+        </p>
+        <div className="row" style={{ gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <label style={{ width: 230 }}>
+            Alerta de espera (minutos)
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={settings.alertas.espera_min}
+              onChange={(e) => setSettings({ ...settings, alertas: { ...settings.alertas, espera_min: Number(e.target.value) } })}
+            />
+          </label>
+          <label style={{ width: 230 }}>
+            Retomar orçamento depois de (dias)
+            <input
+              type="number"
+              min={1}
+              max={29}
+              value={settings.alertas.retomar_dias}
+              onChange={(e) => setSettings({ ...settings, alertas: { ...settings.alertas, retomar_dias: Number(e.target.value) } })}
+            />
+          </label>
+          <button className="primary" onClick={() => save({ alertas: settings.alertas })}>Salvar</button>
+        </div>
       </div>
 
       <div className="card">

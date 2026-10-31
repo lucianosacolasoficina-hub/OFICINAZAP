@@ -25,6 +25,8 @@ export type Conversation = {
   last_message_preview: string | null;
   /** Desde quando o cliente espera resposta (null = já respondido). */
   waiting_since: string | null;
+  /** A última mensagem foi nossa (OficinaZap ou celular)? */
+  last_from_me?: boolean | null;
   created_at: string;
 };
 

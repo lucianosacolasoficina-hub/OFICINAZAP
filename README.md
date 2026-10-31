@@ -7,6 +7,8 @@ Sistema de atendimento no WhatsApp com IA para a Sacolas Oficina.
 - **Caixa de entrada com vários atendentes:** todas as conversas do WhatsApp num só lugar, com filtros (Aguardando, Em atendimento, IA, Encerradas), contador de não lidas e atualização automática a cada 3 segundos.
 - **IA atendendo 24h:** responde dúvidas usando só as informações da empresa cadastradas em Configurações, coleta os dados do orçamento (produto, quantidade, tamanho, material, cores, arte, prazo, CEP) e passa para um humano quando precisa.
 - **Assumir, devolver para a IA ou encerrar** cada conversa. Quando um atendente responde, a IA para de responder naquela conversa.
+- **Alerta de cliente esperando:** passou do limite (padrão 30 min, muda em Configurações), a conversa fica vermelha e aparece um aviso no topo das conversas e na Central, com o número na aba do navegador, bipe e notificação no computador.
+- **Retomar orçamentos sem resposta:** o filtro **Retomar** lista as conversas em que mandamos a última mensagem e o cliente sumiu há alguns dias (padrão 2). Na conversa, o botão **Escrever retomada** pede ao Lula a mensagem; o atendente revisa e envia.
 - **Respostas rápidas:** digite `/` no chat para inserir textos prontos.
 - **Contatos com etiquetas** e tela de **orçamentos coletados**.
 - **Funil de vendas (CRM em colunas):** Novo lead, Orçamento enviado, Arte em aprovação, Pedido fechado, Em produção, Entregue e Perdido. Quem pede orçamento entra sozinho em "Novo lead"; é só arrastar os cards e anotar o valor.
@@ -95,5 +97,5 @@ No celular: WhatsApp > Aparelhos conectados > Conectar aparelho > leia o QR Code
 
 ## Próximas fases
 
-- Transcrição de áudios, follow-up automático para orçamentos sem resposta.
+- Transcrição de áudios.
 - Campanhas, Instagram, agendamento de mensagens e relatórios.

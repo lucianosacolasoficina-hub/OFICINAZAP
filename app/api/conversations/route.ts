@@ -10,7 +10,8 @@ export const GET = route(async (req, _ctx, userId) => {
   const query = supabaseAdmin()
     .from("conversations")
     .select(LIST_SELECT)
-    .order("last_message_at", { ascending: false })
+    // Quem espera há mais tempo aparece primeiro no alerta; em "Retomar", o orçamento mais antigo primeiro.
+    .order(filter.view === "atrasadas" ? "waiting_since" : "last_message_at", { ascending: filter.view === "atrasadas" || filter.view === "retomar" })
     .limit(150);
   const { data, error } = await applyFilter(query, filter, userId, lookups);
   if (error) throw new Error(error.message);
