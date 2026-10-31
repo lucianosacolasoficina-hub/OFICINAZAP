@@ -92,3 +92,50 @@ export function resumoParaIA(c: GestaoConsulta | null) {
   }
   return linhas.join("\n");
 }
+
+// ---------- Histórico completo do cliente (tela de conversas) ----------
+export type HistPedido = {
+  id: string; numero: string; etapa: string; entrada: string; entrega: string | null; atrasado: boolean;
+  total: number; aberto: number; pagamento: string | null; representada: boolean; nfe: string | null;
+  itens: string | null; os: { numero: string; etapa: string }[];
+};
+export type HistProposta = { id: string; numero: string; data: string; situacao: string | null; total: number; itens: string | null };
+export type HistCliente = { id: string; nome: string | null; fantasia?: string | null; documento?: string | null; cidade?: string | null; uf?: string | null; email?: string | null; telefone?: string | null };
+export type GestaoHistorico = {
+  cliente: HistCliente | null;
+  via: "vinculo" | "telefone" | null;
+  pedidos: HistPedido[];
+  propostas: HistProposta[];
+  resumo?: { qtd: number; total: number; primeiro: string | null; ultimo: string | null; andamento: number };
+  aReceber?: number;
+  creditos?: number;
+  atualizadoEm?: string | null;
+};
+export type ClienteBusca = { id: string; nome: string | null; razao: string | null; documento: string | null; cidade: string | null; telefone: string | null; pedidos: number };
+
+async function rpcGestao<T>(fn: string, body: Record<string, unknown>): Promise<T | null> {
+  if (!gestaoAtiva()) return null;
+  const res = await fetch(`${URL_GESTAO}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: {
+      apikey: process.env.GESTAO_SUPABASE_ANON_KEY!,
+      Authorization: `Bearer ${process.env.GESTAO_SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ p_chave: process.env.GESTAO_ZAP_KEY, ...body }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    console.error(`Gestão ${fn} respondeu`, res.status, await res.text().catch(() => ""));
+    return null;
+  }
+  return (await res.json()) as T;
+}
+
+export function historicoGestao(opts: { telefone?: string | null; cliente?: string | null; limite?: number }) {
+  return rpcGestao<GestaoHistorico>("zap_historico", { p_tel: opts.telefone ?? null, p_cliente: opts.cliente ?? null, p_limite: opts.limite ?? 100 });
+}
+
+export function buscarClientesGestao(q: string) {
+  return rpcGestao<ClienteBusca[]>("zap_clientes_busca", { p_q: q });
+}

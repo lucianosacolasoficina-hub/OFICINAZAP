@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useMe } from "@/lib/useMe";
 import { msgCadastro } from "@/lib/cadastroMsg";
+import { HistoricoPedidos } from "@/components/HistoricoPedidos";
 import {
   api,
   avatarColor,
@@ -111,6 +112,7 @@ export default function InboxPage() {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = usePref("sidebar2", false);
   const [infoOpen, setInfoOpen] = usePref("infoOpen", false);
+  const [histOpen, setHistOpen] = usePref("histOpen", false);
   const [crmOpen, setCrmOpen] = usePref("crmOpen", true);
   const [queueOpen, setQueueOpen] = usePref("queueOpen", true);
   const [filterPop, setFilterPop] = useState(false);
@@ -462,10 +464,21 @@ export default function InboxPage() {
             atendentes={summary?.atendentes ?? []}
             onAssign={(agentId) => direcionar(detail.conversation.id, agentId)}
             onBack={() => setSelected(null)}
-            onToggleInfo={() => setInfoOpen(!infoOpen)}
+            onToggleInfo={() => { setInfoOpen(!infoOpen); if (!infoOpen) setHistOpen(false); }}
             infoOpen={infoOpen}
+            onToggleHist={() => { setHistOpen(!histOpen); if (!histOpen) setInfoOpen(false); }}
+            histOpen={histOpen}
           />
-          {infoOpen && (
+          {histOpen && (
+            <div className="side-wrap hp-wrap">
+              <HistoricoPedidos
+                contactId={detail.conversation.contact.id}
+                contactName={detail.conversation.contact.name || ""}
+                onClose={() => setHistOpen(false)}
+              />
+            </div>
+          )}
+          {infoOpen && !histOpen && (
             <div className="side-wrap">
               <button className="side-x" onClick={() => setInfoOpen(false)} aria-label="Fechar dados do cliente">×</button>
               <ContactSide detail={detail} onChange={loadDetail} />
@@ -679,6 +692,8 @@ function Chat({
   onBack,
   onToggleInfo,
   infoOpen,
+  onToggleHist,
+  histOpen,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
@@ -691,6 +706,8 @@ function Chat({
   onBack?: () => void;
   onToggleInfo?: () => void;
   infoOpen?: boolean;
+  onToggleHist?: () => void;
+  histOpen?: boolean;
 }) {
   const { conversation: c, messages } = detail;
   const me = useMe();
@@ -710,6 +727,12 @@ function Chat({
       setLula((l) => ({ ...l, busy: false, out: "⚠ " + (e as Error).message }));
     }
   }
+  // Painel de histórico pode colocar um texto pronto na caixa de resposta.
+  useEffect(() => {
+    const h = (e: Event) => setText(String((e as CustomEvent).detail || ""));
+    window.addEventListener("zap-rascunho", h);
+    return () => window.removeEventListener("zap-rascunho", h);
+  }, []);
   const endRef = useRef<HTMLDivElement>(null);
   const lastId = messages[messages.length - 1]?.id;
 
@@ -825,6 +848,9 @@ function Chat({
               </span>
             )}
             </span>
+          )}
+          {onToggleHist && me?.perms.sistema_gestao && (
+            <button className={`ch2-ped${histOpen ? " on" : ""}`} onClick={onToggleHist} title="Histórico de pedidos e propostas deste cliente no sistema de gestão">📦 <span>Pedidos</span></button>
           )}
           {onToggleInfo && (
             <button className={`ch2-ic${infoOpen ? " on" : ""}`} onClick={onToggleInfo} title="Dados do cliente, pedidos e funil">ℹ️</button>
