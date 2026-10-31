@@ -3,7 +3,7 @@ import { can, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 // Filtros da tela de conversas (lado esquerdo), usados na lista e nos contadores.
-export const VIEWS = ["todas", "minhas", "pendentes", "grupos", "robo", "equipe", "fechadas"] as const;
+export const VIEWS = ["todas", "minhas", "pendentes", "enviadas", "grupos", "robo", "equipe", "fechadas"] as const;
 export const QUEUES = ["todas", "minhas", "departamento", "geral"] as const;
 
 export type View = (typeof VIEWS)[number];
@@ -109,6 +109,10 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
     case "equipe":
       // Em atendimento por outro atendente.
       q = q.eq("status", "open").neq("assigned_to", userId);
+      break;
+    case "enviadas":
+      // Última mensagem foi nossa (pelo OficinaZap ou pelo celular): aguardando o cliente responder.
+      q = q.eq("last_from_me", true);
       break;
     case "fechadas":
       q = q.eq("status", "closed");

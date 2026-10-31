@@ -46,6 +46,7 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
           last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200),
           waiting_since: recente ? ultIso : null,
           unread_count: 0,
+          last_from_me: ult.fromMe,
         })
         .select("id")
         .single();
@@ -53,7 +54,7 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
       convId = nova.id;
       conversas++;
     } else if (!existente?.last_message_at || existente.last_message_at < ultIso) {
-      await db.from("conversations").update({ last_message_at: ultIso, last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200) }).eq("id", convId);
+      await db.from("conversations").update({ last_message_at: ultIso, last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200), last_from_me: ult.fromMe }).eq("id", convId);
     }
     const linhas = lista.map((m) => ({
       conversation_id: convId,

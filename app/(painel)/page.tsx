@@ -44,6 +44,7 @@ const VIEWS = [
   { key: "todas", label: "Todas", icon: "chat" },
   { key: "minhas", label: "Minhas", icon: "user" },
   { key: "pendentes", label: "Pendentes", icon: "hourglass" },
+  { key: "enviadas", label: "Enviadas", icon: "send" },
   { key: "grupos", label: "Grupos", icon: "users" },
   { key: "robo", label: "Robô", icon: "bot" },
   { key: "equipe", label: "Equipe", icon: "team" },

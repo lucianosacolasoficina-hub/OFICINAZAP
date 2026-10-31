@@ -125,6 +125,7 @@ export async function addMessage(
         last_message_preview: preview.slice(0, 120),
         unread_count: msg.direction === "in" ? conv.unread_count + 1 : conv.unread_count,
         waiting_since: waitingSince,
+        ...(msg.sender !== "system" && { last_from_me: msg.direction === "out" }),
       })
       .eq("id", conversationId),
   );
