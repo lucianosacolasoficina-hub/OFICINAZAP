@@ -265,6 +265,16 @@ function ConnectionCard({
           <div className="wa-pop" onMouseLeave={() => setMenu(false)}>
             <div onClick={() => { setMenu(false); onEdit(); }}>Editar nome e departamento</div>
             <div onClick={() => { setMenu(false); onQr(); }}>{connected ? "Atualizar ligação com o sistema" : "Ler QR Code"}</div>
+            {connected && (
+              <div
+                onClick={async () => {
+                  setMenu(false);
+                  const r = await api<{ state: string }>(`/api/whatsapp/${conn.id}`, { method: "POST", body: JSON.stringify({ action: "restart" }) }).catch((e) => { alert(e.message); return null; });
+                  if (r) alert(r.state === "open" ? "Conexão reiniciada. As mensagens novas voltam a chegar em instantes." : "Conexão reiniciada, mas o número ainda não voltou. Se continuar assim, leia o QR Code de novo.");
+                }}
+                title="Use quando o número aparece conectado mas as mensagens novas não chegam"
+              >🔄 Reiniciar conexão (mensagens não chegam)</div>
+            )}
             {connected && <div onClick={logout}>Desconectar</div>}
             <div className="danger" onClick={remove}>Excluir</div>
           </div>

@@ -97,6 +97,14 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /** Apaga a instância na Evolution API (desconecta o celular, se estiver conectado). */
+  /** Reinicia a sessão do número na Evolution (sem precisar ler o QR Code de novo). */
+  async restart() {
+    let r = await this.call("POST", `/instance/restart/${this.instance}`);
+    if (r.status === 404 || r.status === 405) r = await this.call("PUT", `/instance/restart/${this.instance}`);
+    if (r.status >= 400) throw new Error(`Evolution API ${r.status}: ${JSON.stringify(r.data)}`);
+    return r.data;
+  }
+
   async remove() {
     await this.logout().catch(() => {});
     const { status, data } = await this.call("DELETE", `/instance/delete/${this.instance}`);

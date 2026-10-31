@@ -42,6 +42,13 @@ export const POST = route<IdCtx>(async (req, { params }) => {
     return updateConnection(conn.id, { connected_at: null });
   }
   if (!process.env.WEBHOOK_SECRET) throw new HttpError(500, "WEBHOOK_SECRET não configurado");
+  if (action === "restart") {
+    // Religa o webhook e reinicia a sessão: resolve número "conectado" que parou de receber mensagens.
+    await evolution.restart();
+    await new Promise((r) => setTimeout(r, 4000));
+    const r = await evolution.connect(webhookUrl(req, conn.instance));
+    return { reiniciado: true, ...r };
+  }
   const digits = (phone ?? "").replace(/\D/g, "");
   const num = digits ? (digits.length <= 11 ? "55" + digits : digits) : undefined;
   return evolution.connect(webhookUrl(req, conn.instance), num);

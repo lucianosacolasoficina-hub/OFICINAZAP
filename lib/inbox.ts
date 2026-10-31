@@ -90,7 +90,8 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
   }
   switch (f.view) {
     case "todas":
-      q = q.neq("status", "closed");
+      // Com um número escolhido, mostra todas as conversas dele (como no celular), inclusive as antigas encerradas.
+      if (!f.connection || f.connection === "none") q = q.neq("status", "closed");
       break;
     case "minhas":
       q = q.neq("status", "closed").eq("assigned_to", userId);
