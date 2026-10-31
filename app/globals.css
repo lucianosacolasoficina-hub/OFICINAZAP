@@ -364,3 +364,8 @@ button.cc-item.nova b { font-weight: 800; }
 /* Sem rolagem para os lados na tela de conversas */
 .main:has(.inbox2) { overflow: hidden; }
 .inbox2 { width: 100%; height: 100vh; }
+
+/* Abas dos números e filtros quebram linha (todos os números ficam visíveis, sem rolar para o lado) */
+.num-tabs { flex-wrap: wrap; overflow-x: visible; padding-bottom: 4px; }
+.num-tabs button { font-size: 12px; padding: 4px 9px; }
+.view-chips { flex-wrap: wrap; overflow-x: visible; }
