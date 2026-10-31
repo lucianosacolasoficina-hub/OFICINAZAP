@@ -1,6 +1,6 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
 import { blingConnected, sendDealToBling } from "@/lib/bling";
-import { isStage } from "@/lib/deals";
+import { etapaValida, getEtapas } from "@/lib/crm";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const PATCH = route<IdCtx>(async (req, { params }) => {
@@ -14,7 +14,7 @@ export const PATCH = route<IdCtx>(async (req, { params }) => {
   };
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.stage !== undefined) {
-    if (!isStage(body.stage)) throw new HttpError(400, "etapa inválida");
+    if (!(await etapaValida(body.stage))) throw new HttpError(400, "etapa inválida");
     patch.stage = body.stage;
   }
   if (typeof body.position === "number") patch.position = body.position;
@@ -26,7 +26,7 @@ export const PATCH = route<IdCtx>(async (req, { params }) => {
 
   // Pedido fechado: cria o cliente e o pedido de venda no Bling (uma vez só).
   // Se o Bling falhar, o card muda de etapa do mesmo jeito e o erro fica salvo no negócio.
-  if (patch.stage === "fechado" && !data.bling_order_id && (await blingConnected())) {
+  if (patch.stage && (await getEtapas()).some((e) => e.key === patch.stage && e.bling) && !data.bling_order_id && (await blingConnected())) {
     try {
       const order = await sendDealToBling(id);
       return { ...data, bling_order_id: order.id, bling_order_number: order.numero, bling_error: null };

@@ -1,4 +1,4 @@
-import { STAGES } from "./stages";
+import { getEtapas } from "./crm";
 import { can, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
@@ -147,7 +147,8 @@ export const CONVERSATION_SELECT =
 
 export async function countAll(userId: string, base: InboxFilter, connIds: string[] = []) {
   const db = supabaseAdmin();
-  const stageKeys = STAGES.map((s) => s.key);
+  const etapas = await getEtapas();
+  const stageKeys = etapas.map((s) => s.key);
   const lk = await loadLookups(userId, stageKeys);
   const count = async (f: InboxFilter, soStatus?: string) => {
     const query = db.from("conversations").select("id, contact:contacts!inner(is_group)", { count: "exact", head: true });
@@ -179,5 +180,5 @@ export async function countAll(userId: string, base: InboxFilter, connIds: strin
       }),
     ).then((l) => Object.fromEntries(l)),
   ]);
-  return { views, queues, stages, numeros };
+  return { views, queues, stages, numeros, etapas };
 }

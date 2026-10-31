@@ -1,5 +1,5 @@
 import { HttpError, route } from "@/lib/api";
-import { isStage } from "@/lib/deals";
+import { etapaValida, getEtapas } from "@/lib/crm";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async () => {
@@ -24,7 +24,8 @@ export const GET = route(async () => {
 export const POST = route(async (req) => {
   const body = (await req.json()) as { contact_id?: string; conversation_id?: string; title?: string; stage?: string };
   if (!body.contact_id || !body.title?.trim()) throw new HttpError(400, "contato e título são obrigatórios");
-  const stage = isStage(body.stage) ? body.stage : "novo";
+  const stage = (await etapaValida(body.stage)) ? body.stage! : (await getEtapas())[0]?.key;
+  if (!stage) throw new HttpError(400, "crie uma etapa no CRM antes de adicionar ao funil");
   const { data, error } = await supabaseAdmin()
     .from("deals")
     .insert({

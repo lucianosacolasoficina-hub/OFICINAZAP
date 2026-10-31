@@ -1,5 +1,5 @@
 import { route } from "@/lib/api";
-import { STAGES } from "@/lib/stages";
+import { getEtapas } from "@/lib/crm";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Atendimentos por atendente (só administrador): situação da conversa e etapa do funil de cada cliente.
@@ -25,7 +25,7 @@ export const GET = route(async (req) => {
   const etapa = new Map<string, { stage: string; value: number | null }>();
   for (const d of deals ?? []) etapa.set(d.contact_id, { stage: d.stage, value: d.value });
   return {
-    stages: STAGES,
+    stages: await getEtapas(),
     agents: agents ?? [],
     rows: (convs ?? []).map((c) => {
       const ct = c.contact as unknown as { name: string | null; phone: string };

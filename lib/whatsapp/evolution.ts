@@ -266,6 +266,13 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /** Mensagens antigas que chegam no webhook "messages.set" (logo depois de conectar). */
+  /** Mensagem que o próprio número enviou pelo celular (ou WhatsApp Web) — chega no webhook como fromMe. */
+  static parseSentByMe(payload: unknown): { instance?: string; msg: HistMsg | null } {
+    const body = payload as { event?: string; instance?: string; data?: EvolutionRecord };
+    if (body.event !== "messages.upsert" || !body.data?.key?.fromMe) return { msg: null };
+    return { instance: body.instance, msg: EvolutionProvider.parseRecord(body.data) };
+  }
+
   static parseHistorySet(payload: unknown): { instance?: string; msgs: HistMsg[] } {
     const body = payload as { event?: string; instance?: string; data?: unknown };
     if (body.event !== "messages.set") return { msgs: [] };

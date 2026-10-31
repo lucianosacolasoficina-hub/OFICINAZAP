@@ -75,6 +75,19 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
   return { conversas, mensagens };
 }
 
+/** Mensagem enviada pelo celular do número: entra na conversa como enviada (sem duplicar as que saíram pelo OficinaZap). */
+export async function registrarEnviada(conn: Connection, msg: HistMsg) {
+  const db = supabaseAdmin();
+  const { data: ja } = await db.from("messages").select("id").eq("wa_message_id", msg.waMessageId).maybeSingle();
+  if (ja) return;
+  await importarMensagens(conn, [msg]);
+  // Quem respondeu pelo celular atendeu o cliente: para de contar o tempo de espera.
+  if (!msg.isGroup) {
+    const { data: m } = await db.from("messages").select("conversation_id").eq("wa_message_id", msg.waMessageId).maybeSingle();
+    if (m?.conversation_id) await db.from("conversations").update({ waiting_since: null, unread_count: 0 }).eq("id", m.conversation_id);
+  }
+}
+
 /** Puxa da Evolution todas as conversas guardadas deste número (últimos `dias` dias), sem limite de mensagens por conversa. Grava o andamento em settings. */
 export async function puxarHistorico(conn: Connection, dias: number) {
   const chave = `historico_${conn.id}`;

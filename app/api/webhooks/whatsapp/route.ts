@@ -3,7 +3,7 @@ import { handleIncoming } from "@/lib/inbound";
 import { whatsapp } from "@/lib/whatsapp";
 import { EvolutionProvider } from "@/lib/whatsapp/evolution";
 import { connectionByInstance } from "@/lib/connections";
-import { importarMensagens } from "@/lib/historico";
+import { importarMensagens, registrarEnviada } from "@/lib/historico";
 
 export const maxDuration = 60;
 
@@ -46,6 +46,22 @@ export async function POST(req: Request) {
       }
     });
     return NextResponse.json({ ok: true, historico: hist.msgs.length });
+  }
+  // Enviada pelo celular do número (fromMe): guarda como mensagem enviada.
+  const meu = EvolutionProvider.parseSentByMe(payload);
+  if (meu.msg) {
+    const enviada = meu.msg;
+    after(async () => {
+      try {
+        // Espera um pouco: se saiu pelo OficinaZap, ela já foi gravada e não duplica.
+        await new Promise((r) => setTimeout(r, 4000));
+        const conn = await connectionByInstance(meu.instance ?? instance ?? "");
+        if (conn) await registrarEnviada(conn, enviada);
+      } catch (err) {
+        console.error("Erro ao guardar mensagem enviada pelo celular", err);
+      }
+    });
+    return NextResponse.json({ ok: true, enviada: true });
   }
   after(async () => {
     for (const msg of incoming) {

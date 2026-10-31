@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, formatPhone } from "@/lib/client";
 import type { QuoteData } from "@/lib/db";
-import { STAGES, type Deal, type Stage } from "@/lib/stages";
+import { type Deal, type Stage } from "@/lib/stages";
+import { EtapasCrm, type Etapa } from "@/components/EtapasCrm";
+import { useMe } from "@/lib/useMe";
 
 type DealRow = Deal & { contact: { name: string | null; phone: string }; quote: QuoteData | null };
 
@@ -15,6 +17,12 @@ export default function FunnelPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Stage | null>(null);
   const [editing, setEditing] = useState<DealRow | null>(null);
+  const [etapas, setEtapas] = useState<Etapa[] | null>(null);
+  const [editEtapas, setEditEtapas] = useState(false);
+  const me = useMe();
+  useEffect(() => {
+    api<{ etapas: Etapa[] }>("/api/crm/etapas").then((r) => setEtapas(r.etapas)).catch(() => setEtapas([]));
+  }, []);
 
   const load = useCallback(() => api<DealRow[]>("/api/deals").then(setDeals).catch(console.error), []);
   useEffect(() => {
@@ -47,13 +55,19 @@ export default function FunnelPage() {
 
   return (
     <div className="page" style={{ maxWidth: "none" }}>
-      <h1>Funil de vendas</h1>
-      <p className="muted" style={{ marginTop: -8 }}>
-        Clientes que pediram orçamento entram aqui sozinhos, em &quot;Novo lead&quot;. Arraste os cards entre as colunas.
-        Ao chegar em &quot;Pedido fechado&quot;, o cliente e o pedido de venda são criados no Bling (se ele estiver conectado).
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <h1 style={{ margin: 0 }}>Funil de vendas</h1>
+        {me?.role === "admin" && <button onClick={() => setEditEtapas(true)}>✏️ Editar etapas</button>}
+      </div>
+      <p className="muted">
+        Clientes que pediram orçamento entram sozinhos na primeira etapa. Arraste os cards entre as colunas.
+        Na etapa marcada como &quot;Bling&quot;, o cliente e o pedido de venda são criados no Bling (se ele estiver conectado).
       </p>
+      {etapas && etapas.length === 0 && (
+        <p className="muted">Nenhuma etapa criada ainda.{me?.role === "admin" ? " Clique em ✏️ Editar etapas para criar as suas." : ""}</p>
+      )}
       <div className="board">
-        {STAGES.map((s) => {
+        {(etapas ?? []).map((s) => {
           const cards = deals.filter((d) => d.stage === s.key);
           const total = cards.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
           return (
@@ -95,8 +109,10 @@ export default function FunnelPage() {
           );
         })}
       </div>
+      {editEtapas && <EtapasCrm etapas={etapas ?? []} onClose={() => setEditEtapas(false)} onSaved={setEtapas} />}
       {editing && (
         <DealModal
+          etapas={etapas ?? []}
           deal={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -109,7 +125,7 @@ export default function FunnelPage() {
   );
 }
 
-function DealModal({ deal, onClose, onSaved }: { deal: DealRow; onClose: () => void; onSaved: () => void }) {
+function DealModal({ deal, etapas, onClose, onSaved }: { deal: DealRow; etapas: Etapa[]; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(deal.title);
   const [value, setValue] = useState(deal.value != null ? String(deal.value) : "");
   const [notes, setNotes] = useState(deal.notes ?? "");
@@ -150,7 +166,7 @@ function DealModal({ deal, onClose, onSaved }: { deal: DealRow; onClose: () => v
         <label>
           Etapa
           <select value={stage} onChange={(e) => setStage(e.target.value as Stage)}>
-            {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            {(etapas ?? []).map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </label>
         <label>Valor (R$)<input value={value} onChange={(e) => setValue(e.target.value)} placeholder="ex.: 1.250,00" /></label>

@@ -8,7 +8,7 @@ export const STAGES = [
   { key: "perdido", label: "Perdido" },
 ] as const;
 
-export type Stage = (typeof STAGES)[number]["key"];
+export type Stage = string;
 
 export type Deal = {
   id: string;
@@ -28,6 +28,4 @@ export type Deal = {
 
 export const OPEN_STAGES: Stage[] = ["novo", "orcamento", "arte", "fechado", "producao"];
 
-export function isStage(s: unknown): s is Stage {
-  return STAGES.some((st) => st.key === s);
-}
+

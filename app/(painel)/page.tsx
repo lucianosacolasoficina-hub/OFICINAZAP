@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { useMe } from "@/lib/useMe";
 import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
+import { EtapasCrm, type Etapa } from "@/components/EtapasCrm";
 import {
   api,
   avatarColor,
@@ -17,7 +18,6 @@ import {
   STATUS_LABEL,
 } from "@/lib/client";
 import type { Contact, Conversation, ConversationStatus, Department, Message, QuoteData } from "@/lib/db";
-import { STAGES } from "@/lib/stages";
 
 type DeptTag = Pick<Department, "id" | "name" | "color">;
 type ConvRow = Conversation & {
@@ -33,6 +33,7 @@ type Summary = {
   views: Record<string, number>;
   queues: Record<string, number>;
   stages: Record<string, number>;
+  etapas?: Etapa[];
   connections: { id: string; name: string; phone?: string | null; connected_at: string | null }[];
   numeros?: Record<string, NumStats>;
   me: string;
@@ -56,15 +57,6 @@ const QUEUES = [
   { key: "geral", label: "Geral", icon: "users" },
 ];
 
-const STAGE_COLORS: Record<string, string> = {
-  novo: "#6b7280",
-  orcamento: "#2b6cb0",
-  arte: "#6b46c1",
-  fechado: "#128c4a",
-  producao: "#2c7a7b",
-  entregue: "#38a169",
-  perdido: "#c53030",
-};
 
 const POLL_MS = 8000; // lista de conversas
 const MSG_MS = 3000; // mensagens novas da conversa aberta (só as novas)
@@ -113,6 +105,8 @@ export default function InboxPage() {
   const [showFilters, setShowFilters] = usePref("sidebar2", false);
   const [infoOpen, setInfoOpen] = usePref("infoOpen", false);
   const [histOpen, setHistOpen] = usePref("histOpen", false);
+  const [editEtapas, setEditEtapas] = useState(false);
+  const meInbox = useMe();
   const [crmOpen, setCrmOpen] = usePref("crmOpen", true);
   const [queueOpen, setQueueOpen] = usePref("queueOpen", true);
   const [filterPop, setFilterPop] = useState(false);
@@ -295,14 +289,20 @@ export default function InboxPage() {
           </nav>
 
           <Section title="CRM" open={crmOpen} onToggle={() => setCrmOpen(!crmOpen)}>
-            {STAGES.map((st) => (
+            {meInbox?.role === "admin" && (
+              <button className="ib-crm-edit" onClick={() => setEditEtapas(true)} title="Criar, renomear, apagar e reordenar as etapas">
+                ✏️ <span>{(summary?.etapas ?? []).length ? "Editar etapas" : "Criar etapas do CRM"}</span>
+              </button>
+            )}
+            {(summary?.etapas ?? []).length === 0 && meInbox?.role !== "admin" && <span className="ib-dica">Nenhuma etapa criada.</span>}
+            {(summary?.etapas ?? []).map((st) => (
               <button
                 key={st.key}
                 className={stage === st.key ? "on" : ""}
                 onClick={() => setStage(stage === st.key ? "" : st.key)}
                 title={stage === st.key ? "Clique de novo para tirar o filtro" : `Conversas de clientes em "${st.label}"`}
               >
-                <span className="dot" style={{ background: STAGE_COLORS[st.key], width: 8, height: 8, marginRight: 4 }} />
+                <span className="dot" style={{ background: st.color, width: 8, height: 8, marginRight: 4 }} />
                 <span>{st.label}</span>
                 <span className="n">{count(summary?.stages[st.key])}</span>
               </button>
@@ -403,7 +403,7 @@ export default function InboxPage() {
                   Etapa do CRM
                   <select value={stage} onChange={(e) => setStage(e.target.value)}>
                     <option value="">Todas</option>
-                    {STAGES.map((st) => (
+                    {(summary?.etapas ?? []).map((st) => (
                       <option key={st.key} value={st.key}>{st.label}</option>
                     ))}
                   </select>
@@ -495,6 +495,14 @@ export default function InboxPage() {
               <p className="muted">Selecione uma conversa na lista para visualizar o atendimento.</p>
             </div>
         </div>
+      )}
+
+      {editEtapas && (
+        <EtapasCrm
+          etapas={summary?.etapas ?? []}
+          onClose={() => setEditEtapas(false)}
+          onSaved={(e) => { setSummary((s) => (s ? { ...s, etapas: e } : s)); setStage(""); }}
+        />
       )}
 
       {newChat && (

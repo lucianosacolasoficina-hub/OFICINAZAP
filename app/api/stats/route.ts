@@ -1,5 +1,5 @@
 import { route } from "@/lib/api";
-import { STAGES } from "@/lib/stages";
+import { getEtapas } from "@/lib/crm";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async () => {
@@ -40,13 +40,17 @@ export const GET = route(async () => {
 
   const { data: deals, error: dErr } = await db.from("deals").select("stage, value, updated_at").limit(5000);
   if (dErr) throw new Error(dErr.message);
-  const funnel = STAGES.map((s) => {
+  const etapas = await getEtapas();
+  const funnel = etapas.map((s) => {
     const rows = deals.filter((d) => d.stage === s.key);
     return { key: s.key, label: s.label, count: rows.length, value: rows.reduce((t, d) => t + (Number(d.value) || 0), 0) };
   });
+  // Ganhos: da etapa que manda para o Bling em diante (sem contar as encerradas como perdido).
+  const iB = etapas.findIndex((e) => e.bling);
+  const ganhas = new Set(iB >= 0 ? etapas.slice(iB).filter((e) => !/perd/i.test(e.label)).map((e) => e.key) : []);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const wonMonth = deals
-    .filter((d) => ["fechado", "producao", "entregue"].includes(d.stage) && d.updated_at >= monthStart)
+    .filter((d) => ganhas.has(d.stage) && d.updated_at >= monthStart)
     .reduce((t, d) => t + (Number(d.value) || 0), 0);
 
   return {
