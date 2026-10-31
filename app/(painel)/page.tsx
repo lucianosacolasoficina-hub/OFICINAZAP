@@ -138,18 +138,34 @@ export default function InboxPage() {
     return p;
   }, [view, queue, stage, deptFilter, agentFilter, numero]);
 
+  // Cada busca tem um número; resposta atrasada de um filtro antigo é ignorada
+  // (senão a lista de "todos os números" podia aparecer por cima do número escolhido).
+  const listSeq = useRef(0);
+  const sumSeq = useRef(0);
   const loadList = useCallback(async () => {
     const p = new URLSearchParams(params);
     if (query) p.set("q", query);
-    setList(await api<ConvRow[]>(`/api/conversations?${p}`));
+    const meu = ++listSeq.current;
+    const data = await api<ConvRow[]>(`/api/conversations?${p}`);
+    if (meu === listSeq.current) setList(data);
   }, [params, query]);
 
   const loadSummary = useCallback(async () => {
-    setSummary(await api<Summary>(`/api/conversations/summary?${params}`));
+    const meu = ++sumSeq.current;
+    const data = await api<Summary>(`/api/conversations/summary?${params}`);
+    if (meu === sumSeq.current) setSummary(data);
   }, [params]);
 
+  // Trocou o filtro (número, situação, busca…): mostra "Carregando…" até chegar a lista certa.
+  useEffect(() => {
+    setList(null);
+  }, [params, query]);
+
   const loadDetail = useCallback(async () => {
-    if (selected) setDetail(await api<Detail>(`/api/conversations/${selected}`));
+    if (!selected) return;
+    const d = await api<Detail>(`/api/conversations/${selected}`);
+    // Só mostra se ainda for a conversa escolhida (clicou em outra enquanto carregava).
+    setDetail((cur) => (d.conversation.id === selected ? d : cur));
   }, [selected]);
 
   // Só atualiza com a aba aberta na tela (economiza o servidor e deixa tudo mais rápido).
