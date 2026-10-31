@@ -244,6 +244,7 @@ function ConnectionCard({
               <option value={30}>30 dias</option>
               <option value={90}>90 dias</option>
               <option value={365}>1 ano</option>
+              <option value={3650}>Tudo</option>
             </select>
             <button onClick={puxar} disabled={hist?.status === "rodando"}>⬇ Puxar conversas antigas</button>
             {hist && hist.status !== "nunca" && (
@@ -252,7 +253,7 @@ function ConnectionCard({
                   ? `Puxando… ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens`
                   : hist.status === "erro"
                     ? `Erro ao puxar: ${hist.erro}`
-                    : `Última vez: ${hist.chats ?? 0} conversas encontradas, ${hist.conversas ?? 0} novas, ${hist.mensagens ?? 0} mensagens trazidas.`}
+                    : `Última vez: ${hist.chats ?? 0} conversas encontradas, ${hist.conversas ?? 0} novas, ${hist.mensagens ?? 0} mensagens trazidas.${hist.erro ? " ⚠ " + hist.erro : ""}`}
               </div>
             )}
           </div>

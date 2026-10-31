@@ -75,7 +75,7 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
   return { conversas, mensagens };
 }
 
-/** Puxa da Evolution as conversas guardadas deste número (últimos `dias` dias). Grava o andamento em settings. */
+/** Puxa da Evolution todas as conversas guardadas deste número (últimos `dias` dias), sem limite de mensagens por conversa. Grava o andamento em settings. */
 export async function puxarHistorico(conn: Connection, dias: number) {
   const chave = `historico_${conn.id}`;
   const ev = new EvolutionProvider(conn.instance);
@@ -88,18 +88,34 @@ export async function puxarHistorico(conn: Connection, dias: number) {
     );
     andamento.chats = chats.length;
     await setSetting(chave, andamento);
-    for (const c of chats.slice(0, 500)) {
-      const msgs: HistMsg[] = [];
-      for (let page = 1; page <= 5; page++) {
-        const recs = await ev.findMessages(c.remoteJid, page, 100);
-        const parsed = recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m);
-        msgs.push(...parsed.filter((m) => m.ts >= desde));
-        if (recs.length < 100 || parsed.some((m) => m.ts < desde)) break;
-      }
-      if (msgs.length) {
-        const r = await importarMensagens(conn, msgs);
-        andamento.conversas += r.conversas;
-        andamento.mensagens += r.mensagens;
+    let falhas = 0;
+    for (const c of chats) {
+      try {
+        const msgs: HistMsg[] = [];
+        for (let page = 1; page <= 100; page++) {
+          let recs: Awaited<ReturnType<typeof ev.findMessages>> = [];
+          for (let t = 0; t < 3; t++) {
+            try {
+              recs = await ev.findMessages(c.remoteJid, page, 100);
+              break;
+            } catch (e) {
+              if (t === 2) throw e;
+              await new Promise((r) => setTimeout(r, 1500 * (t + 1)));
+            }
+          }
+          const parsed = recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m);
+          msgs.push(...parsed.filter((m) => m.ts >= desde));
+          if (recs.length < 100 || parsed.some((m) => m.ts < desde)) break;
+        }
+        if (msgs.length) {
+          const r = await importarMensagens(conn, msgs);
+          andamento.conversas += r.conversas;
+          andamento.mensagens += r.mensagens;
+        }
+      } catch (e) {
+        // Uma conversa com problema não interrompe as outras.
+        falhas++;
+        andamento.erro = `${falhas} conversa(s) não puderam ser lidas (última: ${(e as Error).message})`;
       }
       andamento.feitos++;
       if (andamento.feitos % 10 === 0) await setSetting(chave, andamento);

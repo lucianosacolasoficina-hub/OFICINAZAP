@@ -26,6 +26,6 @@ export const POST = route<IdCtx>(async (req, { params }) => {
   const { dias = 30 } = (await req.json().catch(() => ({}))) as { dias?: number };
   const ev = new EvolutionProvider(conn.instance);
   const historicoCompleto = await ev.ligarHistoricoCompleto().catch(() => false);
-  after(() => puxarHistorico(conn, Math.min(Math.max(Number(dias) || 30, 1), 365)));
+  after(() => puxarHistorico(conn, Math.min(Math.max(Number(dias) || 30, 1), 3650)));
   return { iniciado: true, historicoCompleto };
 });
