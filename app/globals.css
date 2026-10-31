@@ -361,3 +361,6 @@ button.cc-item.nova b { font-weight: 800; }
 .ib-item .name { font-size: 14.5px; }
 .ib-item .preview { font-size: 13.5px; }
 .composer textarea { font-size: 15px; }
+/* Sem rolagem para os lados na tela de conversas */
+.main:has(.inbox2) { overflow: hidden; }
+.inbox2 { width: 100%; height: 100vh; }

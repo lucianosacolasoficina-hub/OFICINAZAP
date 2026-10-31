@@ -476,44 +476,11 @@ export default function InboxPage() {
         <div className="empty">Carregando...</div>
       ) : (
         <div className="empty">
-          {(summary?.connections.length ?? 0) > 0 ? (
-            <div className="num-painel">
-              <h2>Números de WhatsApp</h2>
-              <p className="muted">Escolha um número para ver só as conversas dele, ou selecione uma conversa na lista.</p>
-              <div className="num-cards">
-                {summary!.connections.map((n) => {
-                  const st = summary!.numeros?.[n.id] ?? { todas: 0, pendentes: 0, abertas: 0, robo: 0 };
-                  return (
-                    <div key={n.id} className={`num-card${numero === n.id ? " on" : ""}`}>
-                      <div className="num-card-h">
-                        <span className={`num-dot ${n.connected_at ? "ok" : "off"}`} />
-                        <div>
-                          <b>{n.name}</b>
-                          <div className="muted">{n.phone ? formatPhone(n.phone) : "sem número"} · {n.connected_at ? "conectado" : "desconectado"}</div>
-                        </div>
-                      </div>
-                      <div className="num-stats">
-                        <span><b className="w">{st.pendentes}</b>aguardando</span>
-                        <span><b className="g">{st.abertas}</b>em atendimento</span>
-                        <span><b className="v">{st.robo}</b>com a IA</span>
-                        <span><b>{st.todas}</b>abertas</span>
-                      </div>
-                      {!n.connected_at && <p className="num-alerta">Desconectado: as mensagens deste número não estão chegando. Conecte na tela WhatsApp.</p>}
-                      <button className={numero === n.id ? "" : "primary"} onClick={() => setNumero(numero === n.id ? "" : n.id)}>
-                        {numero === n.id ? "Mostrar todos os números" : "Ver conversas deste número"}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="ib-empty">
+          <div className="ib-empty">
               <Icon name="chat" size={72} />
               <h2>Nenhuma conversa selecionada</h2>
               <p className="muted">Selecione uma conversa na lista para visualizar o atendimento.</p>
             </div>
-          )}
         </div>
       )}
 
