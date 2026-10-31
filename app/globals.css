@@ -383,3 +383,11 @@ button.cc-item.nova b { font-weight: 800; }
   .nav a, .nav button { justify-content: center; padding: 0; width: 52px; height: 52px; min-height: 52px; margin: 0 auto; }
   .nav .logo { justify-content: center; padding: 2px 0 14px; }
 }
+
+/* Nome embaixo do ícone no menu estreito */
+.nav .nav-s { display: none; }
+@media (max-width: 1600px) {
+  .nav { width: 84px; padding: 12px 6px; gap: 2px; overflow-y: auto; }
+  .nav a, .nav button { flex-direction: column; gap: 3px; width: 72px; height: 58px; min-height: 58px; }
+  .nav .nav-s { display: block; font-size: 10.5px; line-height: 1.1; text-align: center; white-space: nowrap; }
+}

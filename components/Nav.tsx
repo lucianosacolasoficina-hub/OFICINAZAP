@@ -6,18 +6,18 @@ import { useMe } from "@/lib/useMe";
 import { Icon } from "./Icon";
 
 // "perm": permissão necessária para ver o menu ("admin" = só administrador).
-const LINKS: { href: string; label: string; icon: string; perm?: string }[] = [
-  { href: "/", label: "Conversas", icon: "chat" },
-  { href: "/central", label: "Central (colunas)", icon: "columns" },
-  { href: "/painel", label: "Painel", icon: "chart", perm: "ver_todas" },
-  { href: "/funil", label: "Funil de vendas", icon: "funnel", perm: "funil" },
-  { href: "/contatos", label: "Contatos", icon: "users" },
-  { href: "/orcamentos", label: "Orçamentos", icon: "doc" },
-  { href: "/departamentos", label: "Departamentos", icon: "building", perm: "departamentos" },
-  { href: "/whatsapp", label: "WhatsApp", icon: "phone", perm: "whatsapp" },
-  { href: "/configuracoes", label: "Configurações", icon: "gear", perm: "configuracoes" },
-  { href: "/atendimentos", label: "Atendimentos", icon: "trend", perm: "admin" },
-  { href: "/equipe", label: "Equipe", icon: "lock", perm: "admin" },
+const LINKS: { href: string; label: string; short: string; icon: string; perm?: string }[] = [
+  { href: "/", label: "Conversas", short: "Conversas", icon: "chat" },
+  { href: "/central", label: "Central (colunas)", short: "Central", icon: "columns" },
+  { href: "/painel", label: "Painel", short: "Painel", icon: "chart", perm: "ver_todas" },
+  { href: "/funil", label: "Funil de vendas", short: "Funil", icon: "funnel", perm: "funil" },
+  { href: "/contatos", label: "Contatos", short: "Contatos", icon: "users" },
+  { href: "/orcamentos", label: "Orçamentos", short: "Orçamentos", icon: "doc" },
+  { href: "/departamentos", label: "Departamentos", short: "Deptos.", icon: "building", perm: "departamentos" },
+  { href: "/whatsapp", label: "WhatsApp", short: "WhatsApp", icon: "phone", perm: "whatsapp" },
+  { href: "/configuracoes", label: "Configurações", short: "Ajustes", icon: "gear", perm: "configuracoes" },
+  { href: "/atendimentos", label: "Atendimentos", short: "Relatório", icon: "trend", perm: "admin" },
+  { href: "/equipe", label: "Equipe", short: "Equipe", icon: "lock", perm: "admin" },
 ];
 
 export function Nav() {
@@ -34,13 +34,13 @@ export function Nav() {
       </div>
       {LINKS.filter((l) => show(l.perm)).map((l) => (
         <Link key={l.href} href={l.href} className={path === l.href ? "active" : ""} title={l.label} aria-label={l.label}>
-          <Icon name={l.icon} size={22} /> <span className="label">{l.label}</span>
+          <Icon name={l.icon} size={22} /> <span className="label">{l.label}</span><span className="nav-s">{l.short}</span>
         </Link>
       ))}
       <div className="spacer" />
       <form action="/api/auth/logout" method="post">
         <button title="Sair" aria-label="Sair">
-          <Icon name="logout" size={22} /> <span className="label">Sair</span>
+          <Icon name="logout" size={22} /> <span className="label">Sair</span><span className="nav-s">Sair</span>
         </button>
       </form>
     </nav>
