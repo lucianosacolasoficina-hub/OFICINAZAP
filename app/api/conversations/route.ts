@@ -14,7 +14,14 @@ export const GET = route(async (req, _ctx, userId) => {
     .limit(150);
   const { data, error } = await applyFilter(query, filter, userId, lookups);
   if (error) throw new Error(error.message);
-  return data;
+  // Um cliente aparece uma vez por número: fica só a conversa mais recente (as antigas entram no histórico dela).
+  const vistos = new Set<string>();
+  return (data ?? []).filter((c) => {
+    const k = `${(c as { contact_id: string }).contact_id}|${(c as { connection_id: string | null }).connection_id ?? ""}`;
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
 });
 
 // Nova conversa iniciada pelo atendente (botão +). A primeira mensagem é enviada depois, pelo chat.

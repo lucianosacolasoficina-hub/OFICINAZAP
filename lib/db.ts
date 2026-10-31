@@ -135,6 +135,26 @@ export async function setMessageMedia(messageId: string, mediaUrl: string) {
   check(await supabaseAdmin().from("messages").update({ media_url: mediaUrl }).eq("id", messageId));
 }
 
+/** Todas as conversas do mesmo cliente no mesmo número (o histórico fica dividido quando a conversa é encerrada e reaberta). */
+export async function threadIds(conversationId: string): Promise<string[]> {
+  const db = supabaseAdmin();
+  const { data: c } = await db.from("conversations").select("contact_id, connection_id").eq("id", conversationId).maybeSingle();
+  if (!c) return [conversationId];
+  let q = db.from("conversations").select("id").eq("contact_id", c.contact_id);
+  q = c.connection_id ? q.eq("connection_id", c.connection_id) : q.is("connection_id", null);
+  const { data } = await q.limit(200);
+  const ids = (data ?? []).map((r) => r.id as string);
+  return ids.includes(conversationId) ? ids : [conversationId, ...ids];
+}
+
+/** Últimas mensagens de todas as conversas do cliente naquele número, em ordem. */
+export async function threadMessages(ids: string[], limit = 400): Promise<Message[]> {
+  const rows = check(
+    await supabaseAdmin().from("messages").select("*").in("conversation_id", ids).order("created_at", { ascending: false }).limit(limit),
+  ) as Message[];
+  return rows.reverse();
+}
+
 export async function recentMessages(conversationId: string, limit = 40): Promise<Message[]> {
   const db = supabaseAdmin();
   const rows = check(

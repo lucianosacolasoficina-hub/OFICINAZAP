@@ -1,5 +1,5 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
-import { addMessage, updateConversation, type Conversation } from "@/lib/db";
+import { addMessage, threadIds, updateConversation, type Conversation } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsapp } from "@/lib/whatsapp";
 
@@ -38,7 +38,8 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
 export const GET = route<IdCtx>(async (req, { params }) => {
   const { id } = await params;
   const after = new URL(req.url).searchParams.get("after");
-  let q = supabaseAdmin().from("messages").select("*").eq("conversation_id", id).order("created_at", { ascending: true }).limit(200);
+  const ids = await threadIds(id);
+  let q = supabaseAdmin().from("messages").select("*").in("conversation_id", ids).order("created_at", { ascending: true }).limit(200);
   if (after) q = q.gt("created_at", after);
   const { data, error } = await q;
   if (error) throw new Error(error.message);

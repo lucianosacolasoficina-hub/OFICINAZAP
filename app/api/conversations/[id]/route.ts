@@ -2,7 +2,8 @@ import { HttpError, route, type IdCtx } from "@/lib/api";
 import {
   addMessage,
   getQuote,
-  recentMessages,
+  threadIds,
+  threadMessages,
   transferToDepartment,
   updateConversation,
   type ConversationStatus,
@@ -23,7 +24,8 @@ export const GET = route<IdCtx>(async (_req, { params }) => {
   if (error) throw new Error(error.message);
   if (!conversation) throw new HttpError(404, "conversa não encontrada");
   if (conversation.unread_count) await updateConversation(id, { unread_count: 0 });
-  const [messages, quote] = await Promise.all([recentMessages(id, 300), getQuote(id)]);
+  const ids = await threadIds(id);
+  const [messages, quote] = await Promise.all([threadMessages(ids, 400), getQuote(id)]);
   return { conversation, messages, quote };
 });
 
