@@ -1,5 +1,5 @@
 import type { Connection } from "./connections";
-import { setSetting, upsertContact, upsertGroup } from "./db";
+import { getSetting, setSetting, upsertContact, upsertGroup } from "./db";
 import { supabaseAdmin } from "./supabase/admin";
 import { EvolutionProvider, type HistMsg } from "./whatsapp/evolution";
 
@@ -103,6 +103,13 @@ export async function puxarHistorico(conn: Connection, dias: number) {
     await setSetting(chave, andamento);
     let falhas = 0;
     for (const c of chats) {
+      // Pedido de parar (botão na tela) ou outra importação começou depois desta.
+      const atual = await getSetting<{ status?: string; inicio?: string }>(chave, {});
+      if (atual.status === "parar" || (atual.inicio && atual.inicio !== andamento.inicio)) {
+        await setSetting(chave, { ...andamento, status: "parado", fim: new Date().toISOString() });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 300));
       try {
         const msgs: HistMsg[] = [];
         for (let page = 1; page <= 100; page++) {
@@ -119,6 +126,13 @@ export async function puxarHistorico(conn: Connection, dias: number) {
           const parsed = recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m);
           msgs.push(...parsed.filter((m) => m.ts >= desde));
           if (recs.length < 100 || parsed.some((m) => m.ts < desde)) break;
+          // Página inteira já guardada: o resto (mais antigo) também já está aqui — não sobrecarrega a Evolution.
+          const ids = parsed.map((m) => m.waMessageId);
+          if (ids.length) {
+            const { count } = await supabaseAdmin().from("messages").select("id", { count: "exact", head: true }).in("wa_message_id", ids);
+            if ((count ?? 0) >= ids.length) break;
+          }
+          await new Promise((r) => setTimeout(r, 400));
         }
         if (msgs.length) {
           const r = await importarMensagens(conn, msgs);

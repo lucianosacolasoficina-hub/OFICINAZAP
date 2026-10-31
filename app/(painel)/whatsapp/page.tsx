@@ -247,11 +247,16 @@ function ConnectionCard({
               <option value={3650}>Tudo</option>
             </select>
             <button onClick={puxar} disabled={hist?.status === "rodando"}>⬇ Puxar conversas antigas</button>
+            {hist?.status === "rodando" && (
+              <button onClick={() => api(`/api/whatsapp/${conn.id}/historico`, { method: "POST", body: JSON.stringify({ parar: true }) }).catch((e) => alert(e.message))}>⏹ Parar</button>
+            )}
             {hist && hist.status !== "nunca" && (
               <div className="muted" style={{ fontSize: 12.5 }}>
                 {hist.status === "rodando"
                   ? `Puxando… ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens`
-                  : hist.status === "erro"
+                  : hist.status === "parado" || hist.status === "parar"
+                    ? `Parado em ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens trazidas.`
+                    : hist.status === "erro"
                     ? `Erro ao puxar: ${hist.erro}`
                     : `Última vez: ${hist.chats ?? 0} conversas encontradas, ${hist.conversas ?? 0} novas, ${hist.mensagens ?? 0} mensagens trazidas.${hist.erro ? " ⚠ " + hist.erro : ""}`}
               </div>
