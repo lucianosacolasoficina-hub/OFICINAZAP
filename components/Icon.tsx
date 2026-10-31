@@ -23,6 +23,7 @@ const PATHS: Record<string, string> = {
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
   logout: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3",
   close: "M6 6l12 12M18 6L6 18",
+  retry: "M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5",
   send: "M22 2L11 13M22 2l-7 20-4-9-9-4z",
 };
 

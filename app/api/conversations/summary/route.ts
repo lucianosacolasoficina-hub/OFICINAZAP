@@ -3,6 +3,7 @@ import { countAll, parseFilter } from "@/lib/inbox";
 import { can, getAgent } from "@/lib/perms";
 import { listConnections, syncState } from "@/lib/connections";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getAlertas } from "@/lib/alertas";
 
 // Situação dos números (conectado ou não), consultada na Evolution no máximo a cada 60 segundos.
 let cache: { t: number; data: { id: string; name: string; phone: string | null; connected_at: string | null }[] } | null = null;
@@ -28,15 +29,16 @@ export const GET = route(async (req, _ctx, userId) => {
   const agent = await getAgent(userId);
   const total = can(agent, "ver_todas");
   const conns = await estadosNumeros();
-  const [counts, connections, agents, abertas] = await Promise.all([
+  const [counts, connections, agents, abertas, alertas] = await Promise.all([
     countAll(userId, filter, (conns ?? []).map((c) => c.id)),
     Promise.resolve({ data: conns }),
     total ? db.from("agents").select("id, name, active").eq("active", true).order("name") : Promise.resolve({ data: [] }),
     total ? db.from("conversations").select("assigned_to").neq("status", "closed").not("assigned_to", "is", null).limit(5000) : Promise.resolve({ data: [] }),
+    getAlertas(),
   ]);
   // Atendentes com quantas conversas abertas cada um tem (só para quem tem acesso total).
   const n: Record<string, number> = {};
   for (const c of (abertas.data ?? []) as { assigned_to: string }[]) n[c.assigned_to] = (n[c.assigned_to] ?? 0) + 1;
   const atendentes = ((agents.data ?? []) as { id: string; name: string }[]).map((a) => ({ id: a.id, name: a.name, abertas: n[a.id] ?? 0 }));
-  return { ...counts, connections: connections.data ?? [], me: userId, atendentes };
+  return { ...counts, connections: connections.data ?? [], me: userId, atendentes, alertas };
 });

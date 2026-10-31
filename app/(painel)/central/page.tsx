@@ -6,7 +6,7 @@ import { api, avatarColor, formatListTime, formatPhone, formatPreview, formatSin
 // Central de atendimento: uma coluna para cada número de WhatsApp, lado a lado, atualizando sozinha.
 type Conn = { id: string; name: string; phone?: string | null; connected_at: string | null };
 type Stats = { todas: number; pendentes: number; abertas: number; robo: number };
-type Summary = { connections: Conn[]; numeros?: Record<string, Stats> };
+type Summary = { connections: Conn[]; numeros?: Record<string, Stats>; views?: Record<string, number>; alertas?: { espera_min: number; retomar_dias: number } };
 type Row = {
   id: string;
   status: string;
@@ -22,11 +22,12 @@ const FILTROS = [
   { key: "pendentes", label: "Aguardando" },
   { key: "todas", label: "Abertas" },
   { key: "robo", label: "Com a IA" },
+  { key: "retomar", label: "Retomar" },
   { key: "fechadas", label: "Fechadas" },
 ] as const;
-const LATE_MIN = 15;
+const LATE_MIN = 30;
 
-function Coluna({ conn, stats, onAbrir, aberta }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null }) {
+function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null; lateMin?: number }) {
   const [filtro, setFiltro] = useState<string>(() => {
     try {
       return localStorage.getItem(`central_${conn.id}`) || "todas";
@@ -91,7 +92,7 @@ function Coluna({ conn, stats, onAbrir, aberta }: { conn: Conn; stats?: Stats; o
         {lista?.map((c) => {
           const nome = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
           const espera = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
-          const late = espera && Date.now() - new Date(espera).getTime() > LATE_MIN * 60_000;
+          const late = espera && Date.now() - new Date(espera).getTime() > lateMin * 60_000;
           return (
             <button key={c.id} className={`cc-item${aberta === c.id ? " on" : ""}${c.unread_count ? " nova" : ""}`} onClick={() => onAbrir(c.id)}>
               <span className="ib-avatar" style={{ background: avatarColor(c.contact.id), width: 36, height: 36, fontSize: 13 }}>{initials(nome)}</span>
@@ -141,10 +142,15 @@ export default function CentralPage() {
         <span className="muted">Uma coluna para cada número de WhatsApp · atualiza sozinha · clique numa conversa para responder</span>
       </div>
       {erro && <p style={{ color: "var(--danger)", padding: "0 16px" }}>{erro}</p>}
+      {!!sum?.views?.atrasadas && (
+        <p className="cc-alerta espera" style={{ margin: "0 16px 8px" }} role="alert">
+          ⚠ {sum.views.atrasadas} {sum.views.atrasadas === 1 ? "cliente esperando" : "clientes esperando"} resposta há mais de {sum.alertas?.espera_min ?? LATE_MIN} min (em vermelho nas colunas).
+        </p>
+      )}
       <div className="cc-cols">
         {!sum && <p className="muted" style={{ padding: 16 }}>Carregando…</p>}
         {sum?.connections.map((c) => (
-          <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} />
+          <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} lateMin={sum.alertas?.espera_min} />
         ))}
       </div>
       {aberta && (

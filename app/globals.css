@@ -487,3 +487,15 @@ button.cc-item.nova b { font-weight: 800; }
   .ch2-row .who { flex: 1 1 calc(100% - 46px); }
   .ch2-row .who strong { font-size: 16px; }
 }
+
+/* Alerta de cliente esperando e retomada de orçamentos */
+.ib-alerta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 10px 0; padding: 8px 10px; border-radius: 10px; background: var(--danger); color: #fff; font-size: 13px; flex-shrink: 0; }
+.ib-alerta > span { flex: 1 1 180px; }
+.ib-alerta button { font-size: 12px; padding: 4px 10px; background: #fff; color: var(--danger); border-color: #fff; }
+.ib-alerta button.primary { font-weight: 700; }
+.ib-alerta.on { box-shadow: inset 0 0 0 2px rgba(255,255,255,.6); }
+.ib-dica-topo { margin: 8px 10px 0; padding: 8px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--text, inherit); font-size: 12.5px; line-height: 1.4; flex-shrink: 0; }
+.ib-retomar { color: var(--warn); background: var(--warn-soft); font-weight: 600; }
+.retomar-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--warn-soft); border-top: 1px solid var(--border); font-size: 13px; }
+.retomar-bar > span { flex: 1 1 200px; }
+.cc-alerta.espera { background: var(--danger); color: #fff; padding: 8px 12px; border-radius: 10px; font-size: 13px; }
