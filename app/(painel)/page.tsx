@@ -727,10 +727,10 @@ function Chat({
   const [pdOpen, setPdOpen] = useState(false);
   const [acoes, setAcoes] = useState(false);
   const [lula, setLula] = useState<{ open: boolean; busy: boolean; out: string; acao: string; q: string }>({ open: false, busy: false, out: "", acao: "", q: "" });
-  async function perguntarLula(acao: "sugerir" | "resumir" | "perguntar") {
+  async function perguntarLula(acao: "sugerir" | "resumir" | "perguntar" | "melhorar" | "followup" | "objecao") {
     setLula((l) => ({ ...l, busy: true, out: "", acao }));
     try {
-      const r = await api<{ texto: string }>(`/api/conversations/${c.id}/lula`, { method: "POST", body: JSON.stringify({ acao, texto: lula.q }) });
+      const r = await api<{ texto: string }>(`/api/conversations/${c.id}/lula`, { method: "POST", body: JSON.stringify({ acao, texto: acao === "melhorar" ? text : lula.q }) });
       setLula((l) => ({ ...l, busy: false, out: r.texto }));
     } catch (e) {
       setLula((l) => ({ ...l, busy: false, out: "⚠ " + (e as Error).message }));
@@ -816,6 +816,9 @@ function Chat({
               <b className="lula-h">🤖 Lula · assistente de IA</b>
               <span className="lula-acts">
                 {c.status !== "closed" && <button disabled={lula.busy} onClick={() => perguntarLula("sugerir")}>✍️ Sugerir resposta</button>}
+                {c.status !== "closed" && <button disabled={lula.busy || !text.trim()} title={text.trim() ? "Deixa a mensagem que você escreveu mais clara e cordial, sem mudar valores e prazos" : "Escreva a mensagem na caixa de texto primeiro"} onClick={() => perguntarLula("melhorar")}>✨ Melhorar minha mensagem</button>}
+                {c.status !== "closed" && <button disabled={lula.busy} title="Resposta para 'tá caro', 'vou pensar', 'já tenho fornecedor'..." onClick={() => perguntarLula("objecao")}>🛡 Responder objeção</button>}
+                {c.status !== "closed" && <button disabled={lula.busy} title="Mensagem para retomar quando o cliente parou de responder" onClick={() => perguntarLula("followup")}>🔁 Retomar (follow-up)</button>}
                 <button disabled={lula.busy} onClick={() => perguntarLula("resumir")}>📝 Resumir conversa</button>
               </span>
               <span className="lula-ask">
@@ -831,7 +834,7 @@ function Chat({
               {lula.out && (
                 <span className="lula-out">
                   {lula.out}
-                  {lula.acao === "sugerir" && !lula.out.startsWith("⚠") && (
+                  {["sugerir", "melhorar", "followup", "objecao"].includes(lula.acao) && !lula.out.startsWith("⚠") && (
                     <button className="primary" onClick={() => { setText(lula.out); setLula((l) => ({ ...l, open: false })); }}>
                       Usar na resposta
                     </button>
