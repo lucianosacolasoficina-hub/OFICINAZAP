@@ -455,3 +455,35 @@ button.cc-item.nova b { font-weight: 800; }
 .crm-add { display: flex; gap: 6px; }
 .crm-add input { flex: 1; }
 .crm-del { color: #c53030; }
+
+/* Balões de mensagem: leitura no estilo WhatsApp */
+.msgs { gap: 2px; padding: 12px 6%; }
+.bubble { position: relative; max-width: min(75%, 640px); padding: 6px 9px 7px 10px; border-radius: 10px; font-size: 15px; line-height: 1.4; box-shadow: 0 1px .5px rgba(11,20,26,.13); overflow-wrap: anywhere; color: #111b21; }
+.bubble.first { margin-top: 8px; }
+.bubble.in { background: #fff; }
+.bubble.agent { background: #d9fdd3; }
+.bubble.bot { background: #e7ebff; }
+.bubble.in.first { border-top-left-radius: 2px; }
+.bubble.agent.first, .bubble.bot.first { border-top-right-radius: 2px; }
+/* Horário no canto, na mesma linha do fim do texto quando cabe */
+.bubble .meta { position: absolute; right: 8px; bottom: 5px; margin: 0; font-size: 11px; color: #667781; line-height: 1; white-space: nowrap; }
+.bubble .meta-sp { display: inline-block; width: 44px; height: 1px; }
+.bubble .meta-sp.wide { width: 80px; }
+.bubble .media-ph + .meta-sp, .bubble a + .meta-sp { display: block; height: 12px; }
+.bubble .txt { white-space: pre-wrap; }
+.bubble .txt a { color: #027eb5; text-decoration: underline; }
+.bubble .media-link { display: inline-block; padding: 6px 10px; margin-bottom: 4px; border-radius: 8px; background: rgba(0,0,0,.05); font-weight: 600; }
+.bubble .media-ph { color: #54656f; font-style: italic; }
+.bubble img.media { max-width: min(280px, 100%); border-radius: 6px; margin: -2px -4px 4px -5px; }
+.day-sep { align-self: center; margin: 12px 0 4px; }
+.day-sep span { display: inline-block; background: #fff; color: #54656f; font-size: 12.5px; padding: 5px 12px; border-radius: 8px; box-shadow: 0 1px .5px rgba(11,20,26,.13); text-transform: capitalize; }
+.sysmsg { margin: 6px 0; }
+@media (max-width: 900px) {
+  .msgs { padding: 8px 10px; }
+  .bubble { max-width: 85%; font-size: 15.5px; }
+  /* Cabeçalho: nome inteiro na primeira linha, botões na segunda */
+  .chat-head.ch2 { padding: 6px 8px; }
+  .ch2-row { flex-wrap: wrap; row-gap: 6px; }
+  .ch2-row .who { flex: 1 1 calc(100% - 46px); }
+  .ch2-row .who strong { font-size: 16px; }
+}

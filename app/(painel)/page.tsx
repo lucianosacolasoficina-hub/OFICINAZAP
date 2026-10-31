@@ -910,31 +910,57 @@ function Chat({
       </header>
 
       <div className="msgs">
-        {messages.map((m) =>
-          m.sender === "system" ? (
-            <div key={m.id} className="sysmsg">{m.body}</div>
-          ) : (
-            <div key={m.id} className={`bubble ${m.direction === "in" ? "in" : m.sender}`}>
-              {m.media_type === "image" && m.media_url ? (
-                <a href={`/api/media?path=${encodeURIComponent(m.media_url)}`} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/api/media?path=${encodeURIComponent(m.media_url)}`} alt="imagem do cliente" className="media" />
-                </a>
-              ) : m.media_type && m.media_url ? (
-                <a href={`/api/media?path=${encodeURIComponent(m.media_url)}`} target="_blank" rel="noreferrer">
-                  📎 abrir {m.media_type}
-                </a>
-              ) : (
-                m.media_type && <div className="muted">[{m.media_type}]</div>
-              )}
-              {m.body}
-              <div className="meta">
-                {m.sender === "bot" ? "🤖 IA · " : ""}
-                {formatTime(m.created_at)}
+        {messages.map((m, i) => {
+          const prev = messages[i - 1];
+          const day = dayLabel(m.created_at);
+          const newDay = !prev || dayLabel(prev.created_at) !== day;
+          const sep = newDay && <div className="day-sep"><span>{day}</span></div>;
+          if (m.sender === "system") {
+            return (
+              <div key={m.id} style={{ display: "contents" }}>
+                {sep}
+                <div className="sysmsg">{m.body}</div>
+              </div>
+            );
+          }
+          // Mensagens seguidas do mesmo lado, com menos de 5 min entre elas, ficam juntas.
+          const together =
+            !newDay &&
+            prev &&
+            prev.sender !== "system" &&
+            prev.direction === m.direction &&
+            new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
+          const mediaUrl = m.media_url && `/api/media?path=${encodeURIComponent(m.media_url)}`;
+          const label = m.media_type && !mediaUrl ? MEDIA_TEXT[m.media_type] ?? `[${m.media_type}]` : null;
+          // Corpo que é só "[image]" (sem o arquivo) vira o texto com ícone.
+          const body = /^\[(image|audio|video|document|sticker)\]$/.test(m.body.trim()) ? "" : m.body;
+          return (
+            <div key={m.id} style={{ display: "contents" }}>
+              {sep}
+              <div className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}`}>
+                {m.media_type === "image" && mediaUrl ? (
+                  <a href={mediaUrl} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mediaUrl} alt="imagem" className="media" />
+                  </a>
+                ) : m.media_type && mediaUrl ? (
+                  <a className="media-link" href={mediaUrl} target="_blank" rel="noreferrer">
+                    {MEDIA_TEXT[m.media_type] ?? "📎 Arquivo"} · abrir
+                  </a>
+                ) : (
+                  label && <div className="media-ph">{label}</div>
+                )}
+                {body && <Linkified text={body} />}
+                {/* Espaço reservado no fim do texto para o horário (que fica no canto de baixo). */}
+                <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}`} />
+                <span className="meta">
+                  {m.sender === "bot" ? "🤖 IA · " : ""}
+                  {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
               </div>
             </div>
-          ),
-        )}
+          );
+        })}
         <div ref={endRef} />
       </div>
 
@@ -1129,5 +1155,42 @@ function GestaoBox({ detail, onSent }: { detail: Detail; onSent: () => Promise<v
       {data.site && <a className="gz-link" href={data.site} target="_blank" rel="noopener">Abrir o sistema de gestão ↗</a>}
       {data.atualizadoEm && <p className="muted gz-sm">Dados de {new Date(data.atualizadoEm).toLocaleString("pt-BR").slice(0, 16)}</p>}
     </div>
+  );
+}
+
+const MEDIA_TEXT: Record<string, string> = {
+  image: "📷 Imagem",
+  audio: "🎤 Áudio",
+  video: "🎬 Vídeo",
+  document: "📄 Documento",
+  sticker: "🏷️ Figurinha",
+};
+
+/** "Hoje", "Ontem", dia da semana (última semana) ou a data. */
+function dayLabel(iso: string) {
+  const d = new Date(iso);
+  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((start(new Date()) - start(d)) / 86_400_000);
+  if (days <= 0) return "Hoje";
+  if (days === 1) return "Ontem";
+  if (days < 7) return d.toLocaleDateString("pt-BR", { weekday: "long" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/** Texto da mensagem com os links clicáveis (link comprido aparece encurtado). */
+function Linkified({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <span className="txt">
+      {parts.map((part, i) => {
+        if (!/^https?:\/\//.test(part)) return part;
+        const short = part.replace(/^https?:\/\/(www\.)?/, "");
+        return (
+          <a key={i} href={part} target="_blank" rel="noreferrer" title={part}>
+            {short.length > 48 ? `${short.slice(0, 45)}…` : short}
+          </a>
+        );
+      })}
+    </span>
   );
 }
