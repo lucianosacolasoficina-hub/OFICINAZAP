@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, formatPhone } from "@/lib/client";
+import { InstagramSetup } from "@/components/InstagramSetup";
 
 type Connection = {
   id: string;
@@ -338,6 +339,8 @@ export default function WhatsAppPage() {
         </span>
       </div>
       {error && <p style={{ color: "crimson" }}>{error}</p>}
+
+      <InstagramSetup />
 
       <div className="wa-grid">
         {list.map((c) => (

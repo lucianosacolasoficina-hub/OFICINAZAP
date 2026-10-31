@@ -2,6 +2,7 @@ import { HttpError, route, type IdCtx } from "@/lib/api";
 import { addMessage, threadIds, updateConversation, type Conversation } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsapp } from "@/lib/whatsapp";
+import { enviarTexto, IG_PREFIX } from "@/lib/instagram";
 
 // Atendente envia uma mensagem. Ao responder, ele assume a conversa e a IA para de responder nela.
 export const POST = route<IdCtx>(async (req, { params }, userId) => {
@@ -12,16 +13,19 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
 
   const { data, error } = await supabaseAdmin()
     .from("conversations")
-    .select("*, contact:contacts(phone, is_group), connection:whatsapp_connections(instance)")
+    .select("*, contact:contacts(phone, is_group), connection:whatsapp_connections(id, instance, channel)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "conversa não encontrada");
-  const conversation = data as Conversation & { contact: { phone: string; is_group: boolean }; connection: { instance: string } | null };
+  const conversation = data as Conversation & { contact: { phone: string; is_group: boolean }; connection: { id: string; instance: string; channel?: string } | null };
 
   // Responde pelo mesmo número de WhatsApp em que o cliente escreveu.
   const { phone, is_group } = conversation.contact;
-  const sent = await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text);
+  const sent =
+    conversation.connection?.channel === "instagram"
+      ? await enviarTexto(conversation.connection.id, phone.slice(IG_PREFIX.length), text)
+      : await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text);
   if (conversation.status !== "open" || conversation.assigned_to !== userId) {
     await updateConversation(id, { status: "open", assigned_to: userId });
   }

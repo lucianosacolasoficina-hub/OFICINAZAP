@@ -18,6 +18,7 @@ export function formatTime(iso: string) {
 }
 
 export function formatPhone(phone: string) {
+  if (phone.startsWith("ig:")) return "Instagram";
   const m = phone.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : `+${phone}`;
 }

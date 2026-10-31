@@ -515,3 +515,22 @@ button.cc-item.nova b { font-weight: 800; }
   .nav .nav-s { font-size: 10px; }
   .nav a svg, .nav button svg { width: 19px; height: 19px; }
 }
+
+/* ---------- Instagram Direct ---------- */
+.ig-box { border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin: 0 0 18px; background: linear-gradient(135deg, #fff7fb, #fff); display: flex; flex-direction: column; gap: 10px; }
+.ig-btn { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 20px; color: #fff !important; font-weight: 700; text-decoration: none; background: linear-gradient(90deg, #f58529, #dd2a7b, #8134af); }
+.ig-aviso { margin: 0; padding: 8px 10px; border-radius: 8px; background: #f0f9f4; font-size: 13.5px; }
+.ig-contas { display: flex; flex-direction: column; gap: 6px; }
+.ig-conta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13.5px; }
+.ig-conta .ok { color: #128c4a; font-weight: 600; }
+.ig-conta .off { color: #c53030; font-weight: 600; }
+.ig-link { align-self: flex-start; background: none; border: 0; padding: 0; color: #8134af; font-weight: 600; cursor: pointer; }
+.ig-guia { font-size: 13.5px; }
+.ig-guia ol { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ig-campos { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin: 6px 0; }
+.ig-copy { display: inline-flex; gap: 6px; align-items: center; min-width: 0; }
+.ig-copy code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.ig-copy button { padding: 2px 8px; font-size: 12px; }
+.ig-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.ig-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; flex: 1 1 220px; }
+@media (max-width: 700px) { .ig-campos { grid-template-columns: 1fr; } }

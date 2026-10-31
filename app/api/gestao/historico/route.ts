@@ -15,7 +15,7 @@ export const GET = route(async (req) => {
   if (error) throw new Error(error.message);
   if (!ct) throw new HttpError(404, "contato não encontrado");
   const vinculado = !!ct.gestao_cliente_id;
-  const dados = vinculado || !ct.is_group ? await historicoGestao({ cliente: ct.gestao_cliente_id, telefone: vinculado ? null : ct.phone }) : null;
+  const dados = vinculado || (!ct.is_group && !String(ct.phone).startsWith("ig:")) ? await historicoGestao({ cliente: ct.gestao_cliente_id, telefone: vinculado || String(ct.phone).startsWith("ig:") ? null : ct.phone }) : null;
   return {
     ativo: true,
     site: GESTAO_SITE,

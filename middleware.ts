@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
   const data = { user: logado ? {} : null };
 
   const path = request.nextUrl.pathname;
-  if (!data.user && path !== "/login" && path !== "/api/auth/sso" && path !== "/api/lula") {
+  if (!data.user && path !== "/login" && path !== "/api/auth/sso" && path !== "/api/lula" && path !== "/privacidade" && path !== "/exclusao-de-dados") {
     if (path.startsWith("/api/")) {
       return NextResponse.json({ error: "não autenticado" }, { status: 401 });
     }

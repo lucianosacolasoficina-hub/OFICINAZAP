@@ -12,6 +12,7 @@ export type Connection = {
   department_id: string | null;
   connected_at: string | null;
   created_at: string;
+  channel?: string;
 };
 
 /** Quantos números podem ser conectados ao mesmo tempo. */
@@ -69,6 +70,8 @@ export async function deleteConnection(id: string) {
  * Estados: "open" (conectado), "connecting", "close" ou "missing" (instância ainda não criada).
  */
 export async function syncState(conn: Connection): Promise<Connection & { state: string }> {
+  // Instagram não passa pela Evolution: está conectado enquanto tiver o token guardado.
+  if (conn.channel === "instagram") return { ...conn, state: conn.connected_at ? "open" : "close" };
   const evolution = new EvolutionProvider(conn.instance);
   let state: string;
   try {
