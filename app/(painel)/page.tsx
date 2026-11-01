@@ -699,12 +699,27 @@ function Section({
 function Avatar({ id, name, size = 40, foto }: { id: string; name: string; size?: number; foto?: boolean }) {
   // Com "foto", tenta a foto de perfil do WhatsApp; sem foto (ou se falhar), ficam as iniciais.
   const [ok, setOk] = useState(true);
+  // Só pede a foto quando o contato aparece na tela (a lista pode ter centenas de conversas).
+  const [visto, setVisto] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!foto || visto || !ref.current) return;
+    if (typeof IntersectionObserver === "undefined") return setVisto(true);
+    const io = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting)) {
+        setVisto(true);
+        io.disconnect();
+      }
+    }, { rootMargin: "200px" });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [foto, visto]);
   return (
-    <span className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
+    <span ref={ref} className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
       {initials(name)}
-      {foto && ok && (
+      {foto && ok && visto && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onError={() => setOk(false)} />
+        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" onError={() => setOk(false)} />
       )}
     </span>
   );
