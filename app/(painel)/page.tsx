@@ -698,12 +698,13 @@ function Section({
 function Avatar({ id, name, size = 40, foto }: { id: string; name: string; size?: number; foto?: boolean }) {
   // Com "foto", tenta a foto de perfil do WhatsApp; sem foto (ou se falhar), ficam as iniciais.
   const [ok, setOk] = useState(true);
+  const [carregou, setCarregou] = useState(false);
   return (
     <span className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
       {initials(name)}
       {foto && ok && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onLoad={(e) => e.currentTarget.classList.add("ok")} onError={() => setOk(false)} />
+        <img className={`ib-foto${carregou ? " ok" : ""}`} src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onLoad={() => setCarregou(true)} onError={() => setOk(false)} />
       )}
     </span>
   );
