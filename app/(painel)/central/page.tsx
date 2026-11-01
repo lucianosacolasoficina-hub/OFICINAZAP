@@ -141,7 +141,6 @@ export default function CentralPage() {
   // Arrumação: "lado" = colunas lado a lado (rola para o lado); "grade" = todas na tela (até 6: 3 em cima e 3 embaixo).
   const [modo, setModo] = useState<"lado" | "grade">("grade");
   const [ocultos, setOcultos] = useState<string[]>([]);
-  const [cfg, setCfg] = useState(false);
   const [maxId, setMaxId] = useState<string | null>(null);
   // Conversa aberta na tela toda (com painel do cliente, pedidos e ferramentas) ou numa janela lateral.
   const [cheia, setCheia] = useState(true);
@@ -195,18 +194,30 @@ export default function CentralPage() {
         <span className="cc-modo">
           <button className={modo === "grade" ? "on" : ""} onClick={() => mudarModo("grade")} title="Todas as caixas na tela (3 em cima, 3 embaixo)">▦ Todas na tela</button>
           <button className={modo === "lado" ? "on" : ""} onClick={() => mudarModo("lado")} title="Colunas lado a lado, rolando para o lado">▥ Lado a lado</button>
-          <button onClick={() => setCfg(!cfg)} aria-expanded={cfg} title="Escolher quais caixas aparecem">⚙ Caixas</button>
-          {cfg && sum && (
-            <span className="cc-cfg" onMouseLeave={() => setCfg(false)}>
-              {sum.connections.map((c) => (
-                <label key={c.id}>
-                  <input type="checkbox" checked={!ocultos.includes(c.id)} onChange={(e) => mudarOcultos(e.target.checked ? ocultos.filter((x) => x !== c.id) : [...ocultos, c.id])} /> {c.name}
-                </label>
-              ))}
-            </span>
-          )}
         </span>
       </div>
+      {sum && sum.connections.length > 1 && (
+        <div className="cc-chips" role="group" aria-label="Caixas que aparecem na tela">
+          <span className="cc-chips-t">Caixas na tela:</span>
+          {sum.connections.map((c) => {
+            const on = !ocultos.includes(c.id);
+            return (
+              <button
+                key={c.id}
+                className={on ? "on" : ""}
+                aria-pressed={on}
+                title={on ? "Clique para tirar esta caixa da tela" : "Clique para mostrar esta caixa"}
+                onClick={() => mudarOcultos(on ? [...ocultos, c.id] : ocultos.filter((x) => x !== c.id))}
+              >
+                <span aria-hidden="true">{on ? "✓" : "+"}</span> {c.name}
+              </button>
+            );
+          })}
+          {ocultos.length > 0 && (
+            <button className="cc-chips-all" onClick={() => mudarOcultos([])}>Mostrar todas</button>
+          )}
+        </div>
+      )}
       {erro && <p style={{ color: "var(--danger)", padding: "0 16px" }}>{erro}</p>}
       {!!sum?.views?.atrasadas && (
         <p className="cc-alerta espera" style={{ margin: "0 16px 8px" }} role="alert">

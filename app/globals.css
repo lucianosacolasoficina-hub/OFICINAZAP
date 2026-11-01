@@ -676,3 +676,10 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .cc-stats span { cursor: pointer; transition: border-color .15s, background .15s; }
 .cc-stats span:hover { border-color: var(--brand); background: var(--brand-soft, #e7f6ee); }
 .cc-f button:hover:not(.on) { border-color: var(--brand); color: var(--brand); }
+.cc-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 2px 16px 8px; }
+.cc-chips-t { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.cc-chips button { font-size: 13.5px; font-weight: 600; padding: 7px 14px; border-radius: 99px; border: 2px dashed #b8c2cc; background: var(--panel); color: #5b6670; cursor: pointer; transition: all .12s; }
+.cc-chips button:hover { border-color: var(--brand); color: var(--brand); }
+.cc-chips button.on { border: 2px solid var(--brand); background: var(--brand); color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+.cc-chips button.on:hover { filter: brightness(1.08); color: #fff; }
+.cc-chips button.cc-chips-all { border-style: solid; border-color: var(--border); font-weight: 500; }
