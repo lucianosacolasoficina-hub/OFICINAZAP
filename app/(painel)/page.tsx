@@ -948,6 +948,29 @@ function Chat({
   const [qrIndex, setQrIndex] = useState(0);
   const [pdOpen, setPdOpen] = useState(false);
   const [acoes, setAcoes] = useState(false);
+  // Painel de arquivos da conversa, busca dentro da conversa e foto ampliada na própria tela.
+  const [arq, setArq] = useState(false);
+  const [arqTab, setArqTab] = useState<"fotos" | "docs" | "audios" | "links">("fotos");
+  const [busca, setBusca] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<string | null>(null);
+  const arquivos = useMemo(() => {
+    const out = { fotos: [] as Message[], docs: [] as Message[], audios: [] as Message[], links: [] as { url: string; m: Message }[] };
+    for (const m of messages) {
+      if (m.media_url && (m.media_type === "image" || m.media_type === "video" || m.media_type === "sticker")) out.fotos.push(m);
+      else if (m.media_url && m.media_type === "audio") out.audios.push(m);
+      else if (m.media_url && m.media_type) out.docs.push(m);
+      for (const u of m.body?.match(/https?:\/\/[^\s]+/g) ?? []) out.links.push({ url: u, m });
+    }
+    return out;
+  }, [messages]);
+  useEffect(() => {
+    if (!zoom) return;
+    const f = (e: KeyboardEvent) => e.key === "Escape" && setZoom(null);
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [zoom]);
+  const qBusca = (busca ?? "").trim().toLowerCase();
+  const achados = qBusca.length >= 2 ? messages.filter((m) => m.body?.toLowerCase().includes(qBusca)).length : 0;
   const [lula, setLula] = useState<{ open: boolean; busy: boolean; out: string; acao: string; q: string }>({ open: false, busy: false, out: "", acao: "", q: "" });
   async function perguntarLula(acao: "sugerir" | "resumir" | "perguntar" | "melhorar" | "followup" | "objecao") {
     setLula((l) => ({ ...l, busy: true, out: "", acao }));
@@ -1083,12 +1106,6 @@ function Chat({
             )}
             </span>
           )}
-          {onToggleHist && me?.perms.sistema_gestao && (
-            <button className={`ch2-ped${histOpen ? " on" : ""}`} onClick={onToggleHist} title="Histórico de pedidos e propostas deste cliente no sistema de gestão">📦 <span>Pedidos</span></button>
-          )}
-          {onToggleInfo && (
-            <button className={`ch2-ic${infoOpen ? " on" : ""}`} onClick={onToggleInfo} title="Dados do cliente, pedidos e funil">ℹ️</button>
-          )}
           <span className="pd-wrap">
             <button className="ch2-ic" onClick={() => setAcoes((v) => !v)} title="Mais ações" aria-label="Mais ações">⋯</button>
             {acoes && (
@@ -1142,9 +1159,33 @@ function Chat({
             )}
           </span>
         </div>
+        <nav className="ch2-tools" aria-label="Ferramentas da conversa">
+          {onToggleHist && me?.perms.sistema_gestao && (
+            <button className={`t-ped${histOpen ? " on" : ""}`} onClick={onToggleHist} title="Pedidos, orçamentos e ocorrências deste cliente no sistema de gestão">📦 Pedidos e orçamentos</button>
+          )}
+          {onToggleHist && me?.perms.sistema_gestao && (
+            <button className={`t-oc${histOpen ? " on" : ""}`} onClick={onToggleHist} title="Ver e lançar ocorrências dos pedidos deste cliente">📋 Ocorrências</button>
+          )}
+          <button className={`t-arq${arq ? " on" : ""}`} onClick={() => setArq(!arq)} title="Fotos, documentos, áudios e links desta conversa">
+            📎 Arquivos e fotos <b>{arquivos.fotos.length + arquivos.docs.length + arquivos.audios.length}</b>
+          </button>
+          {onToggleInfo && (
+            <button className={`t-cli${infoOpen ? " on" : ""}`} onClick={onToggleInfo} title="Dados do cliente, funil e etiquetas">👤 Dados do cliente</button>
+          )}
+          {busca === null ? (
+            <button className="t-bus" onClick={() => setBusca("")} title="Procurar uma palavra nesta conversa">🔍 Buscar na conversa</button>
+          ) : (
+            <span className="t-busca">
+              <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar nesta conversa…" onKeyDown={(e) => e.key === "Escape" && setBusca(null)} />
+              {qBusca.length >= 2 && <small>{achados} {achados === 1 ? "mensagem" : "mensagens"}</small>}
+              <button onClick={() => setBusca(null)} aria-label="Fechar busca">×</button>
+            </span>
+          )}
+        </nav>
       </header>
 
-      <div className="msgs">
+      <div className="chat-corpo">
+      <div className={`msgs${qBusca.length >= 2 ? " buscando" : ""}`}>
         {messages.map((m, i) => {
           const prev = messages[i - 1];
           const day = dayLabel(m.created_at);
@@ -1172,12 +1213,16 @@ function Chat({
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {sep}
-              <div className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}`}>
+              <div className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}`}>
                 {m.media_type === "image" && mediaUrl ? (
-                  <a href={mediaUrl} target="_blank" rel="noreferrer">
+                  <button type="button" className="media-btn" onClick={() => setZoom(mediaUrl)} title="Ampliar">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mediaUrl} alt="imagem" className="media" />
-                  </a>
+                    <img src={mediaUrl} alt="imagem" className="media" loading="lazy" />
+                  </button>
+                ) : m.media_type === "audio" && mediaUrl ? (
+                  <audio className="media-audio" controls preload="none" src={mediaUrl} />
+                ) : m.media_type === "video" && mediaUrl ? (
+                  <video className="media" controls preload="metadata" src={mediaUrl} />
                 ) : m.media_type && mediaUrl ? (
                   <a className="media-link" href={mediaUrl} target="_blank" rel="noreferrer">
                     {MEDIA_TEXT[m.media_type] ?? "📎 Arquivo"} · abrir
@@ -1185,7 +1230,18 @@ function Chat({
                 ) : (
                   label && <div className="media-ph">{label}</div>
                 )}
-                {body && <Linkified text={body} />}
+                {body && (() => {
+                  // Em grupo, "Nome: texto" vira o nome colorido em cima do texto.
+                  const g = c.contact.is_group && m.direction === "in" ? body.match(/^([^:\n]{2,40}):\s([\s\S]*)$/) : null;
+                  return g ? (
+                    <>
+                      <b className="g-nome" style={{ color: avatarColor(g[1]) }}>{g[1]}</b>
+                      <Linkified text={g[2]} />
+                    </>
+                  ) : (
+                    <Linkified text={body} />
+                  );
+                })()}
                 {/* Espaço reservado no fim do texto para o horário (que fica no canto de baixo). */}
                 <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}`} />
                 <span className="meta">
@@ -1198,6 +1254,67 @@ function Chat({
         })}
         <div ref={endRef} />
       </div>
+      {arq && (
+        <aside className="arq-panel" aria-label="Arquivos da conversa">
+          <div className="arq-h">
+            <b>📎 Arquivos desta conversa</b>
+            <button onClick={() => setArq(false)} aria-label="Fechar arquivos">×</button>
+          </div>
+          <div className="arq-tabs" role="tablist">
+            {([["fotos", "🖼 Fotos e vídeos", arquivos.fotos.length], ["docs", "📄 Documentos", arquivos.docs.length], ["audios", "🎤 Áudios", arquivos.audios.length], ["links", "🔗 Links", arquivos.links.length]] as const).map(([k, l, n]) => (
+              <button key={k} role="tab" aria-selected={arqTab === k} className={arqTab === k ? "on" : ""} onClick={() => setArqTab(k)}>{l} <small>{n}</small></button>
+            ))}
+          </div>
+          <div className="arq-body">
+            {arqTab === "fotos" && (arquivos.fotos.length ? (
+              <div className="arq-grid">
+                {arquivos.fotos.slice().reverse().map((m) => {
+                  const u = `/api/media?path=${encodeURIComponent(m.media_url!)}`;
+                  return m.media_type === "video" ? (
+                    <a key={m.id} href={u} target="_blank" rel="noreferrer" className="arq-vid">🎬<small>{formatTime(m.created_at)}</small></a>
+                  ) : (
+                    <button key={m.id} type="button" onClick={() => setZoom(u)} title={new Date(m.created_at).toLocaleString("pt-BR")}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt="" loading="lazy" />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : <p className="muted arq-vazio">Nenhuma foto nesta conversa.</p>)}
+            {arqTab === "docs" && (arquivos.docs.length ? arquivos.docs.slice().reverse().map((m) => (
+              <a key={m.id} className="arq-doc" href={`/api/media?path=${encodeURIComponent(m.media_url!)}`} target="_blank" rel="noreferrer">
+                <span className="arq-ic">📄</span>
+                <span><b>{m.body && !/^\[.*\]$/.test(m.body.trim()) ? m.body.slice(0, 60) : "Documento"}</b><small>{new Date(m.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · {m.direction === "in" ? "recebido" : "enviado"}</small></span>
+                <span className="arq-abrir">Abrir ↗</span>
+              </a>
+            )) : <p className="muted arq-vazio">Nenhum documento nesta conversa.</p>)}
+            {arqTab === "audios" && (arquivos.audios.length ? arquivos.audios.slice().reverse().map((m) => (
+              <div key={m.id} className="arq-aud">
+                <small>{new Date(m.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · {m.direction === "in" ? "cliente" : "nós"}</small>
+                <audio controls preload="none" src={`/api/media?path=${encodeURIComponent(m.media_url!)}`} />
+              </div>
+            )) : <p className="muted arq-vazio">Nenhum áudio nesta conversa.</p>)}
+            {arqTab === "links" && (arquivos.links.length ? arquivos.links.slice().reverse().map(({ url, m }, i) => (
+              <a key={m.id + i} className="arq-doc" href={url} target="_blank" rel="noreferrer">
+                <span className="arq-ic">🔗</span>
+                <span><b>{url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</b><small>{new Date(m.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</small></span>
+              </a>
+            )) : <p className="muted arq-vazio">Nenhum link nesta conversa.</p>)}
+          </div>
+        </aside>
+      )}
+      </div>
+      {zoom && (
+        <div className="zoom-bg" onClick={() => setZoom(null)} role="dialog" aria-label="Foto ampliada">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={zoom} alt="" onClick={(e) => e.stopPropagation()} />
+          <span className="zoom-acts" onClick={(e) => e.stopPropagation()}>
+            <a href={zoom} target="_blank" rel="noreferrer">Abrir em nova aba ↗</a>
+            <a href={zoom} download>⬇ Baixar</a>
+            <button onClick={() => setZoom(null)}>× Fechar</button>
+          </span>
+        </div>
+      )}
 
       {c.status !== "closed" && !c.contact.is_group && c.last_from_me && Date.now() - new Date(c.last_message_at).getTime() > retomarDias * 864e5 && (
         <div className="retomar-bar">
