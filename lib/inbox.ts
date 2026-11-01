@@ -4,7 +4,7 @@ import { can, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 // Filtros da tela de conversas (lado esquerdo), usados na lista e nos contadores.
-export const VIEWS = ["todas", "minhas", "pendentes", "enviadas", "retomar", "grupos", "robo", "equipe", "fechadas", "atrasadas"] as const;
+export const VIEWS = ["todas", "minhas", "pendentes", "naolidas", "atendimento", "enviadas", "retomar", "grupos", "robo", "equipe", "fechadas", "atrasadas"] as const;
 export const QUEUES = ["todas", "minhas", "departamento", "geral"] as const;
 
 export type View = (typeof VIEWS)[number];
@@ -119,6 +119,12 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
     case "pendentes":
       // Grupos ficam de fora para não encher a fila de quem espera resposta.
       q = q.eq("status", "waiting").eq("contact.is_group", false);
+      break;
+    case "naolidas":
+      q = q.neq("status", "closed").gt("unread_count", 0);
+      break;
+    case "atendimento":
+      q = q.eq("status", "open");
       break;
     case "grupos":
       q = q.neq("status", "closed").eq("contact.is_group", true);

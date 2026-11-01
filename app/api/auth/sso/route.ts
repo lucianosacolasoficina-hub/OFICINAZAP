@@ -14,6 +14,7 @@ export async function POST(req: Request) {
   if (!url || !anon) return volta(req, "indisponivel");
   const form = await req.formData().catch(() => null);
   const token = String(form?.get("token") ?? "");
+  const v = String(form?.get("v") ?? "").replace(/[^a-z]/g, "").slice(0, 20);
   if (!token) return volta(req, "sessao");
 
   const r = await fetch(`${url.replace(/\/+$/, "")}/auth/v1/user`, {
@@ -37,5 +38,5 @@ export async function POST(req: Request) {
   const supabase = await supabaseServer();
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (e2) return volta(req, "indisponivel");
-  return NextResponse.redirect(publicUrl(req, "/"), { status: 303 });
+  return NextResponse.redirect(publicUrl(req, v ? `/?v=${v}` : "/"), { status: 303 });
 }

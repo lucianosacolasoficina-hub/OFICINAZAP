@@ -46,6 +46,8 @@ const VIEWS = [
   { key: "todas", label: "Todas", icon: "chat" },
   { key: "minhas", label: "Minhas", icon: "user" },
   { key: "pendentes", label: "Pendentes", icon: "hourglass" },
+  { key: "naolidas", label: "Não lidas", icon: "chat" },
+  { key: "atendimento", label: "Em atendimento", icon: "team" },
   { key: "enviadas", label: "Enviadas", icon: "send" },
   { key: "retomar", label: "Retomar", icon: "retry" },
   { key: "grupos", label: "Grupos", icon: "users" },
@@ -148,6 +150,9 @@ export default function InboxPage() {
   const [embed, setEmbed] = useState(false);
   useEffect(() => {
     setEmbed(new URLSearchParams(window.location.search).get("embed") === "1");
+    // Atalho vindo do sistema de gestão: /?v=pendentes abre direto nessa lista.
+    const v = new URLSearchParams(window.location.search).get("v");
+    if (v && VIEWS.some((x) => x.key === v)) setView(v);
   }, []);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
