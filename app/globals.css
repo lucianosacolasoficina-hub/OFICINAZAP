@@ -772,3 +772,19 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 @media (min-width: 1200px) { .list { width: 380px; } }
 .ib-foto { background: none; color: transparent; }
 .t-del { border-color: #dc2626 !important; color: #b91c1c; margin-left: auto; } .t-del:hover { background: #fef2f2 !important; }
+/* Central no PC: botões numa barra lateral à esquerda, as caixas ocupam toda a altura */
+@media (min-width: 1000px) {
+  .cc.cc-lat { flex-direction: row; }
+  .cc-side { width: 230px; flex: none; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px; border-right: 1px solid var(--border); background: var(--panel); overflow-y: auto; }
+  .cc-side .cc-top { flex-direction: column; align-items: stretch; gap: 8px; padding: 0; }
+  .cc-side .cc-top h1 { font-size: 17px; }
+  .cc-side .cc-top > .muted { display: none; }
+  .cc-side .cc-modo { margin: 0; flex-direction: column; }
+  .cc-side .cc-modo button { width: 100%; text-align: left; font-size: 13.5px; padding: 8px 12px; border-radius: 10px; }
+  .cc-side .cc-chips { flex-direction: column; align-items: stretch; flex-wrap: nowrap; padding: 0; gap: 6px; }
+  .cc-side .cc-chips-t { margin: 6px 2px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .cc-side .cc-chips button { text-align: left; border-radius: 10px; padding: 8px 12px; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cc-side .cc-alerta.espera { margin: 4px 0 0 !important; font-size: 12.5px; line-height: 1.35; }
+  .cc.cc-lat .cc-cols { padding-top: 12px; }
+  .cc.cc-lat .cc-cols.grade { grid-auto-rows: max(420px, calc((100dvh - 40px) / 2)); }
+}

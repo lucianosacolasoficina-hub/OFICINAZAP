@@ -187,7 +187,8 @@ export default function CentralPage() {
   }, []);
 
   return (
-    <div className="cc">
+    <div className="cc cc-lat">
+      <aside className="cc-side">
       <div className="cc-top">
         <h1>Central de atendimento</h1>
         <span className="muted">Uma caixa para cada número/canal · atualiza sozinha · clique numa conversa para responder</span>
@@ -221,9 +222,10 @@ export default function CentralPage() {
       {erro && <p style={{ color: "var(--danger)", padding: "0 16px" }}>{erro}</p>}
       {!!sum?.views?.atrasadas && (
         <p className="cc-alerta espera" style={{ margin: "0 16px 8px" }} role="alert">
-          ⚠ {sum.views.atrasadas} {sum.views.atrasadas === 1 ? "cliente esperando" : "clientes esperando"} resposta há mais de {sum.alertas?.espera_min ?? LATE_MIN} min (em vermelho nas colunas).
+          ⚠ {sum.views.atrasadas} {sum.views.atrasadas === 1 ? "cliente esperando" : "clientes esperando"} resposta há mais de {sum.alertas?.espera_min ?? LATE_MIN} min (em vermelho nas caixas).
         </p>
       )}
+      </aside>
       <div className={`cc-cols${modo === "grade" ? " grade" : ""}`}>
         {!sum && <p className="muted" style={{ padding: 16 }}>Carregando…</p>}
         {sum?.connections.filter((c) => !ocultos.includes(c.id)).map((c) => (
