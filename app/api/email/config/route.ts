@@ -7,7 +7,7 @@ export const GET = route(async () => {
   const cfg = await getEmailConfig();
   const { data: contas } = await supabaseAdmin()
     .from("whatsapp_connections")
-    .select("id, name, connected_at, tok:email_tokens(address, last_sync, last_error)")
+    .select("id, name, connected_at, department_id, tok:email_tokens(address, last_sync, last_error), imap:email_imap(address, last_sync, last_error)")
     .eq("channel", "email")
     .order("created_at");
   return { client_id: cfg.client_id, tem_chave: !!cfg.client_secret, tenant: cfg.tenant, redirect_uri: emailUrl("/api/email/callback"), contas: contas ?? [] };

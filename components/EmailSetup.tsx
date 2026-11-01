@@ -10,7 +10,7 @@ type Cfg = {
   tem_chave: boolean;
   tenant: string;
   redirect_uri: string;
-  contas: { id: string; name: string; connected_at: string | null; tok: Tok | Tok[] | null }[];
+  contas: { id: string; name: string; connected_at: string | null; tok: Tok | Tok[] | null; imap?: unknown }[];
 };
 
 const AVISOS: Record<string, string> = {
@@ -56,7 +56,10 @@ export function EmailSetup() {
   if (!cfg) return null;
   const admin = me?.role === "admin";
   const pronto = !!cfg.client_id; // o segredo é opcional (sem ele, o app usa PKCE como cliente público)
-  const contas = cfg.contas.map((c) => ({ ...c, tok: Array.isArray(c.tok) ? c.tok[0] : c.tok }));
+  // Só as contas do Outlook (o Gmail aparece no quadro "Gmail da equipe").
+  const contas = cfg.contas
+    .filter((c) => !(Array.isArray(c.imap) ? c.imap.length : c.imap))
+    .map((c) => ({ ...c, tok: Array.isArray(c.tok) ? c.tok[0] : c.tok }));
 
   async function salvar() {
     setSalvando(true);

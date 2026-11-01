@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, formatPhone } from "@/lib/client";
 import { InstagramSetup } from "@/components/InstagramSetup";
 import { EmailSetup } from "@/components/EmailSetup";
+import { GmailSetup } from "@/components/GmailSetup";
 
 type Connection = {
   id: string;
@@ -342,6 +343,7 @@ export default function WhatsAppPage() {
       {error && <p style={{ color: "crimson" }}>{error}</p>}
 
       <InstagramSetup />
+      <GmailSetup />
       <EmailSetup />
 
       <div className="wa-grid">

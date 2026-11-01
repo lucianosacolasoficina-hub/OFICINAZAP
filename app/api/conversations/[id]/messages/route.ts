@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsapp } from "@/lib/whatsapp";
 import { enviarTexto, IG_PREFIX } from "@/lib/instagram";
 import { enviarEmail, MAIL_PREFIX } from "@/lib/email";
+import { contaImap, enviarImap } from "@/lib/emailImap";
 import { enviarMessenger, FB_PREFIX } from "@/lib/messenger";
 
 // Atendente envia uma mensagem. Ao responder, ele assume a conversa e a IA para de responder nela.
@@ -30,7 +31,7 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
       : conversation.connection?.channel === "messenger"
       ? await enviarMessenger(conversation.connection.id, phone.slice(FB_PREFIX.length), text)
       : conversation.connection?.channel === "email"
-      ? await enviarEmail(conversation.connection.id, phone.slice(MAIL_PREFIX.length), text, await threadIds(id))
+      ? await enviarPorEmail(conversation.connection.id, phone.slice(MAIL_PREFIX.length), text, await threadIds(id))
       : await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text);
   if (conversation.status !== "open" || conversation.assigned_to !== userId) {
     await updateConversation(id, { status: "open", assigned_to: userId });
@@ -55,3 +56,9 @@ export const GET = route<IdCtx>(async (req, { params }) => {
   if (error) throw new Error(error.message);
   return data ?? [];
 });
+
+/** E-mail: Gmail/IMAP (senha de app) ou Outlook (Microsoft). */
+async function enviarPorEmail(connectionId: string, para: string, texto: string, ids: string[]) {
+  const c = await contaImap(connectionId);
+  return c ? enviarImap(c, para, texto, ids) : enviarEmail(connectionId, para, texto, ids);
+}

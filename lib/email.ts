@@ -103,7 +103,7 @@ async function graph<T>(t: Tok, url: string, init?: RequestInit): Promise<T> {
   return j;
 }
 
-type GMsg = {
+export type GMsg = {
   id: string;
   internetMessageId?: string;
   subject?: string;
@@ -127,7 +127,35 @@ const limpar = (s: string) =>
     .trim()
     .slice(0, 20000);
 
+/** Anexos de um e-mail: nomes de todos e o conteúdo do primeiro (até 15 MB). */
+export type Anexos = { nomes: string[]; primeiro?: { data: Buffer; mimeType: string } | null };
+
+async function anexosGraph(t: Tok, id: string): Promise<Anexos> {
+  const at = await graph<{ value: { name: string; contentType: string; size: number; isInline?: boolean }[] }>(t, `/me/messages/${id}/attachments?$select=name,contentType,size,isInline`);
+  const arqs = at.value.filter((a) => !a.isInline);
+  if (!arqs.length) return { nomes: [] };
+  const p = arqs[0];
+  let primeiro: Anexos["primeiro"] = null;
+  if (p.size <= 15 * 1024 * 1024) {
+    const full = await graph<{ value: { name: string; contentType: string; contentBytes?: string }[] }>(t, `/me/messages/${id}/attachments`);
+    const b = full.value.find((x) => x.name === p.name);
+    if (b?.contentBytes) primeiro = { data: Buffer.from(b.contentBytes, "base64"), mimeType: b.contentType || "application/octet-stream" };
+  }
+  return { nomes: arqs.map((a) => a.name), primeiro };
+}
+
 async function guardar(t: Tok, conn: { id: string; department_id: string | null }, m: GMsg, deMim: boolean) {
+  return guardarEmail(t.address, conn, m, deMim, () => anexosGraph(t, m.id));
+}
+
+/** Guarda um e-mail (Outlook ou Gmail) na conversa do remetente/destinatário. */
+export async function guardarEmail(
+  minhaConta: string,
+  conn: { id: string; department_id: string | null },
+  m: GMsg,
+  deMim: boolean,
+  pegarAnexos?: () => Promise<Anexos>,
+) {
   if (m["@removed"] || m.isDraft) return;
   const wa = `mail:${m.internetMessageId ?? m.id}`;
   const db = supabaseAdmin();
@@ -135,7 +163,7 @@ async function guardar(t: Tok, conn: { id: string; department_id: string | null 
   if (ja) return;
   const outro = deMim ? m.toRecipients?.[0]?.emailAddress : m.from?.emailAddress;
   const addr = outro?.address?.toLowerCase();
-  if (!addr || addr === t.address) return;
+  if (!addr || addr === minhaConta.toLowerCase()) return;
   const contato = await upsertContact(MAIL_PREFIX + addr, outro?.name && outro.name !== outro.address ? outro.name : addr);
   const quando0 = m.receivedDateTime ?? m.sentDateTime ?? new Date().toISOString();
   const antigo0 = Date.now() - new Date(quando0).getTime() > 2 * 864e5;
@@ -182,23 +210,14 @@ async function guardar(t: Tok, conn: { id: string; department_id: string | null 
       .eq("id", conversa.id);
   }
   // Guarda o primeiro anexo (até 15 MB) para abrir pela conversa; os demais ficam listados no texto.
-  if (m.hasAttachments) {
+  if (m.hasAttachments && pegarAnexos) {
     try {
-      const at = await graph<{ value: { name: string; contentType: string; contentBytes?: string; size: number; isInline?: boolean }[] }>(
-        t,
-        `/me/messages/${m.id}/attachments?$select=name,contentType,size,isInline`,
-      );
-      const arqs = at.value.filter((a) => !a.isInline);
-      if (arqs.length) {
-        await db.from("messages").update({ body: `${texto}\n\n📎 ${arqs.map((a) => a.name).join(", ")}` }).eq("id", salvo.id);
-        const primeiro = arqs[0];
-        if (primeiro.size <= 15 * 1024 * 1024) {
-          const full = await graph<{ value: { name: string; contentType: string; contentBytes?: string }[] }>(t, `/me/messages/${m.id}/attachments`);
-          const b = full.value.find((x) => x.name === primeiro.name);
-          if (b?.contentBytes) {
-            const path = await saveMedia(conversa.id, salvo.id, { data: Buffer.from(b.contentBytes, "base64"), mimeType: b.contentType || "application/octet-stream" }).catch(() => null);
-            if (path) await setMessageMedia(salvo.id, path);
-          }
+      const ax = await pegarAnexos();
+      if (ax.nomes.length) {
+        await db.from("messages").update({ body: `${texto}\n\n📎 ${ax.nomes.join(", ")}` }).eq("id", salvo.id);
+        if (ax.primeiro) {
+          const path = await saveMedia(conversa.id, salvo.id, ax.primeiro).catch(() => null);
+          if (path) await setMessageMedia(salvo.id, path);
         }
       }
     } catch (e) {
