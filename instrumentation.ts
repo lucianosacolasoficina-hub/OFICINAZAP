@@ -1,10 +1,6 @@
-// Roda uma vez quando o servidor sobe: busca e-mails novos (Outlook e Gmail) a cada minuto.
+// Roda uma vez quando o servidor sobe. O import fica dentro do if para não entrar no pacote "edge".
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { sincronizarTodos } = await import("./lib/email");
-  const { sincronizarTodosImap } = await import("./lib/emailImap");
-  setInterval(() => {
-    sincronizarTodos().catch((e) => console.error("sync e-mail", e));
-    sincronizarTodosImap().catch((e) => console.error("sync gmail", e));
-  }, 60_000);
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation-node");
+  }
 }
