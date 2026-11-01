@@ -23,7 +23,12 @@ export async function GET(req: NextRequest) {
     const cfg = await getIgConfig();
     const r = await trocarCodigo(cfg, code, igUrl("/api/instagram/callback"));
     await gravarConexao(r);
-    await assinarWebhook(r.token, r.igUserId);
+    try {
+      await assinarWebhook(r.token, r.igUserId, "pageId" in r ? r.pageId : null);
+    } catch (e) {
+      console.error("Instagram conectado, mas a assinatura do webhook falhou", e);
+      return volta(`ok&aviso=${encodeURIComponent(`conectado, mas o aviso de mensagens novas falhou: ${(e as Error).message}`.slice(0, 300))}`);
+    }
     return volta("ok");
   } catch (err) {
     console.error("Erro ao conectar Instagram", err);

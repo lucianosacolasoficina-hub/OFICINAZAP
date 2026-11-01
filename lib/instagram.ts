@@ -107,8 +107,18 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("code", code);
   const r = await jsonOuErro(await fetch(u, { cache: "no-store" }));
-  const token = String(r.access_token);
-  let conta: { id: string; username?: string };
+  let token = String(r.access_token);
+  // Token de usuário (configuração por Página): troca por um de longa duração antes de pegar o token da Página.
+  try {
+    const dbg = await jsonOuErro(await fetch(`${FB_GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(`${cfg.app_id}|${cfg.app_secret}`)}`, { cache: "no-store" }));
+    if ((dbg.data as { type?: string })?.type === "USER") {
+      const ll = await jsonOuErro(await fetch(`${FB_GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${cfg.app_id}&client_secret=${encodeURIComponent(cfg.app_secret ?? "")}&fb_exchange_token=${encodeURIComponent(token)}`, { cache: "no-store" }));
+      if (ll.access_token) token = String(ll.access_token);
+    }
+  } catch (e) {
+    console.warn("Instagram: não deu para trocar por token de longa duração", e);
+  }
+  let conta: ContaAchada;
   try {
     conta = await acharContaInstagram(cfg, token);
   } catch (e) {
@@ -116,10 +126,12 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
     await supabaseAdmin().from("instagram_config").update({ pending_token: token }).eq("id", 1);
     throw e;
   }
-  const me = await jsonOuErro(await fetch(`${FB_GRAPH}/${conta.id}?fields=id,username,name&access_token=${encodeURIComponent(token)}`)).catch(() => ({}) as Record<string, unknown>);
+  const usar = conta.token ?? token;
+  const me = await jsonOuErro(await fetch(`${FB_GRAPH}/${conta.id}?fields=id,username,name&access_token=${encodeURIComponent(usar)}`)).catch(() => ({}) as Record<string, unknown>);
   return {
-    token,
-    expiresAt: r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000).toISOString() : null,
+    token: usar,
+    pageId: conta.pageId ?? null,
+    expiresAt: conta.token ? null : r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000).toISOString() : null,
     igUserId: String(conta.id),
     username: ((me.username as string) ?? conta.username) || null,
     name: (me.name as string) ?? null,
@@ -131,7 +143,8 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
  * Tenta, em ordem: contas atribuídas ao token, os ids das permissões concedidas (debug_token)
  * e as Páginas ligadas a uma conta do Instagram.
  */
-async function acharContaInstagram(cfg: IgConfig, token: string): Promise<{ id: string; username?: string }> {
+type ContaAchada = { id: string; username?: string; token?: string; pageId?: string };
+async function acharContaInstagram(cfg: IgConfig, token: string): Promise<ContaAchada> {
   const t = encodeURIComponent(token);
   const tentativas: string[] = [];
   try {
@@ -153,10 +166,13 @@ async function acharContaInstagram(cfg: IgConfig, token: string): Promise<{ id: 
     tentativas.push(`permissões: ${(e as Error).message}`);
   }
   try {
-    const r = await jsonOuErro(await fetch(`${FB_GRAPH}/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${t}`, { cache: "no-store" }));
-    const pg = ((r.data as { instagram_business_account?: { id: string; username?: string } }[]) ?? []).find((p) => p.instagram_business_account);
-    if (pg?.instagram_business_account) return pg.instagram_business_account;
-    tentativas.push("páginas: 0");
+    // Login com token de usuário: a conta do Instagram vem pela Página do Facebook ligada a ela,
+    // e as mensagens usam o token da Página (não vence quando vem de um token de usuário de longa duração).
+    const r = await jsonOuErro(await fetch(`${FB_GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${t}`, { cache: "no-store" }));
+    const pgs = (r.data as { id: string; name?: string; access_token?: string; instagram_business_account?: { id: string; username?: string } }[]) ?? [];
+    const pg = pgs.find((p) => p.instagram_business_account);
+    if (pg?.instagram_business_account) return { ...pg.instagram_business_account, token: pg.access_token, pageId: pg.id };
+    tentativas.push(`páginas: ${pgs.length} sem Instagram ligado${pgs.length ? ` (${pgs.map((p) => p.name).join(", ").slice(0, 120)})` : ""}`);
   } catch (e) {
     tentativas.push(`páginas: ${(e as Error).message}`);
   }
@@ -164,10 +180,12 @@ async function acharContaInstagram(cfg: IgConfig, token: string): Promise<{ id: 
 }
 
 /** Pede à Meta para mandar as mensagens do Direct desta conta para o nosso webhook. */
-export async function assinarWebhook(token: string, igUserId?: string) {
+export async function assinarWebhook(token: string, igUserId?: string, pageId?: string | null) {
   const cfg = await getIgConfig();
   if (unificado(cfg) && igUserId) {
-    await jsonOuErro(await fetch(`${FB_GRAPH}/${igUserId}/subscribed_apps?subscribed_fields=messages&access_token=${encodeURIComponent(token)}`, { method: "POST" }));
+    // Com token de Página, a assinatura é feita na Página; com token de usuário do sistema, na conta do Instagram.
+    const no = pageId ?? igUserId;
+    await jsonOuErro(await fetch(`${FB_GRAPH}/${no}/subscribed_apps?subscribed_fields=messages&access_token=${encodeURIComponent(token)}`, { method: "POST" }));
     return;
   }
   const campos = "messages,messaging_seen,messaging_postbacks,messaging_reactions,messaging_referrals";

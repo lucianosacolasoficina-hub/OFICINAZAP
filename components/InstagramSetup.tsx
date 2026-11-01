@@ -51,7 +51,7 @@ export function InstagramSetup() {
     const q = new URLSearchParams(window.location.search);
     const ig = q.get("ig");
     if (ig) {
-      setAviso(ig === "erro" ? `⚠ Não deu para conectar: ${q.get("msg") ?? "erro desconhecido"}` : AVISOS[ig] ?? "");
+      setAviso(ig === "erro" ? `⚠ Não deu para conectar: ${q.get("msg") ?? "erro desconhecido"}` : `${AVISOS[ig] ?? ""}${q.get("aviso") ? ` ⚠ ${q.get("aviso")}` : ""}`);
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
