@@ -27,7 +27,7 @@ const FILTROS = [
 ] as const;
 const LATE_MIN = 30;
 
-function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null; lateMin?: number }) {
+function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false, onMax }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null; lateMin?: number; max?: boolean; onMax?: () => void }) {
   const [filtro, setFiltro] = useState<string>(() => {
     try {
       return localStorage.getItem(`central_${conn.id}`) || "todas";
@@ -61,14 +61,19 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN }: { conn: Co
 
   const online = !!conn.connected_at;
   return (
-    <section className={`cc-col${online ? "" : " off"}`}>
-      <header className="cc-h">
+    <section className={`cc-col${online ? "" : " off"}${max ? " max" : ""}`}>
+      <header className="cc-h" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,input")) onMax?.(); }}>
         <div className="cc-t">
           <span className={`num-dot ${online ? "ok" : "off"}`} />
           <div>
             <b>{conn.name}</b>
             <small>{conn.phone ? formatPhone(conn.phone) : "sem número"} · {online ? "conectado" : "desconectado"}</small>
           </div>
+          {onMax && (
+            <button className="cc-max" onClick={onMax} title={max ? "Voltar para todas as caixas (Esc)" : "Abrir esta caixa na tela toda"}>
+              {max ? "⤡ Reduzir" : "⤢ Expandir"}
+            </button>
+          )}
         </div>
         <div className="cc-stats">
           <span className="w" title="Aguardando resposta"><b>{stats?.pendentes ?? "–"}</b>aguardando</span>
@@ -125,6 +130,16 @@ export default function CentralPage() {
   const [modo, setModo] = useState<"lado" | "grade">("grade");
   const [ocultos, setOcultos] = useState<string[]>([]);
   const [cfg, setCfg] = useState(false);
+  const [maxId, setMaxId] = useState<string | null>(null);
+  // Conversa aberta na tela toda (com painel do cliente, pedidos e ferramentas) ou numa janela lateral.
+  const [cheia, setCheia] = useState(true);
+  useEffect(() => {
+    try { setCheia(localStorage.getItem("oz.centralCheia") !== "0"); } catch {}
+  }, []);
+  const mudarCheia = (v: boolean) => {
+    setCheia(v);
+    try { localStorage.setItem("oz.centralCheia", v ? "1" : "0"); } catch {}
+  };
   useEffect(() => {
     try {
       const m = localStorage.getItem("oz.centralModo");
@@ -149,7 +164,13 @@ export default function CentralPage() {
   }, []);
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setAberta(null);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAberta((a) => {
+        if (!a) setMaxId(null);
+        return null;
+      });
+    };
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, []);
@@ -183,13 +204,18 @@ export default function CentralPage() {
       <div className={`cc-cols${modo === "grade" ? " grade" : ""}`}>
         {!sum && <p className="muted" style={{ padding: 16 }}>Carregando…</p>}
         {sum?.connections.filter((c) => !ocultos.includes(c.id)).map((c) => (
-          <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} lateMin={sum.alertas?.espera_min} />
+          <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} lateMin={sum.alertas?.espera_min} max={maxId === c.id} onMax={() => setMaxId(maxId === c.id ? null : c.id)} />
         ))}
       </div>
       {aberta && (
         <div className="cc-drawer-bg" onClick={() => setAberta(null)}>
-          <div className="cc-drawer" onClick={(e) => e.stopPropagation()}>
-            <button className="cc-fechar" onClick={() => setAberta(null)} aria-label="Fechar conversa">×</button>
+          <div className={`cc-drawer${cheia ? " cheia" : ""}`} onClick={(e) => e.stopPropagation()}>
+            <div className="cc-dbar">
+              <button onClick={() => setAberta(null)}>← Voltar para a Central</button>
+              <button className="cc-dmodo" onClick={() => mudarCheia(!cheia)} title={cheia ? "Abrir a conversa numa janela lateral" : "Abrir a conversa na tela toda, com as ferramentas"}>
+                {cheia ? "⤡ Janela lateral" : "⤢ Tela toda"}
+              </button>
+            </div>
             <iframe key={aberta} src={`/?c=${aberta}&embed=1`} title="Conversa" />
           </div>
         </div>

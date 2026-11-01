@@ -144,6 +144,11 @@ export default function InboxPage() {
   const [list, setList] = useState<ConvRow[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // Aberta dentro da Central (iframe ?embed=1): só a conversa e as ferramentas, sem a lista.
+  const [embed, setEmbed] = useState(false);
+  useEffect(() => {
+    setEmbed(new URLSearchParams(window.location.search).get("embed") === "1");
+  }, []);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [, setTick] = useState(0);
@@ -328,7 +333,7 @@ export default function InboxPage() {
   const modoQuadros = quadros && !selected && !numero && visiveis.length > 1;
 
   return (
-    <div className={`inbox inbox2${selected ? " tem-sel" : ""}`}>
+    <div className={`inbox inbox2${selected ? " tem-sel" : ""}${embed ? " embed" : ""}`}>
       {showFilters && (
         <aside className="ib-filters">
           <div className="ib-filters-head">
