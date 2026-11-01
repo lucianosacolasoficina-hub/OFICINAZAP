@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { activeConversation, addMessage, setMessageMedia, upsertContact } from "./db";
 import { saveMedia } from "./media";
 import { supabaseAdmin } from "./supabase/admin";
@@ -38,7 +39,14 @@ export async function saveEmailConfig(p: { client_id?: string; client_secret?: s
 
 const authBase = (cfg: EmailConfig) => `https://login.microsoftonline.com/${cfg.tenant || "consumers"}/oauth2/v2.0`;
 
-export function urlAutorizacaoEmail(cfg: EmailConfig, state: string) {
+/** Sem segredo: o app funciona como "cliente público" e a troca do código é protegida por PKCE. */
+export function pkce() {
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
+
+export function urlAutorizacaoEmail(cfg: EmailConfig, state: string, challenge?: string) {
   const u = new URL(`${authBase(cfg)}/authorize`);
   u.searchParams.set("client_id", cfg.client_id ?? "");
   u.searchParams.set("response_type", "code");
@@ -47,6 +55,10 @@ export function urlAutorizacaoEmail(cfg: EmailConfig, state: string) {
   u.searchParams.set("scope", MAIL_SCOPES.join(" "));
   u.searchParams.set("prompt", "select_account");
   u.searchParams.set("state", state);
+  if (challenge) {
+    u.searchParams.set("code_challenge", challenge);
+    u.searchParams.set("code_challenge_method", "S256");
+  }
   return u.toString();
 }
 
@@ -54,15 +66,15 @@ async function token(cfg: EmailConfig, form: Record<string, string>) {
   const r = await fetch(`${authBase(cfg)}/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: cfg.client_id ?? "", client_secret: cfg.client_secret ?? "", scope: MAIL_SCOPES.join(" "), ...form }),
+    body: new URLSearchParams({ client_id: cfg.client_id ?? "", ...(cfg.client_secret ? { client_secret: cfg.client_secret } : {}), scope: MAIL_SCOPES.join(" "), ...form }),
   });
   const j = (await r.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string; error?: string };
   if (!r.ok || !j.access_token) throw new Error(`Microsoft: ${j.error_description?.split("\n")[0] ?? j.error ?? r.status}`);
   return { access: j.access_token, refresh: j.refresh_token ?? form.refresh_token ?? "", expiresAt: new Date(Date.now() + (j.expires_in ?? 3600) * 1000 - 60000).toISOString() };
 }
 
-export async function trocarCodigoEmail(cfg: EmailConfig, code: string) {
-  const t = await token(cfg, { grant_type: "authorization_code", code, redirect_uri: emailUrl("/api/email/callback") });
+export async function trocarCodigoEmail(cfg: EmailConfig, code: string, verifier?: string) {
+  const t = await token(cfg, { grant_type: "authorization_code", code, redirect_uri: emailUrl("/api/email/callback"), ...(verifier ? { code_verifier: verifier } : {}) });
   const me = (await (await fetch(`${GRAPH}/me?$select=mail,userPrincipalName,displayName`, { headers: { Authorization: `Bearer ${t.access}` } })).json()) as {
     mail?: string;
     userPrincipalName?: string;

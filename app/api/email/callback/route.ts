@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const volta = (q: string) => {
     const r = NextResponse.redirect(publicUrl(req, `/whatsapp?mail=${q}`));
     r.cookies.delete("mail_state");
+    r.cookies.delete("mail_pkce");
     return r;
   };
   const p = req.nextUrl.searchParams;
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   const code = p.get("code");
   if (!code) return volta("cancelado");
   try {
-    const r = await trocarCodigoEmail(await getEmailConfig(), code);
+    const r = await trocarCodigoEmail(await getEmailConfig(), code, req.cookies.get("mail_pkce")?.value);
     const db = supabaseAdmin();
     const instance = `mail:${r.address}`;
     let { data: conn } = await db.from("whatsapp_connections").select("id").eq("instance", instance).maybeSingle();

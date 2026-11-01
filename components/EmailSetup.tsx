@@ -55,7 +55,7 @@ export function EmailSetup() {
 
   if (!cfg) return null;
   const admin = me?.role === "admin";
-  const pronto = !!cfg.client_id && cfg.tem_chave;
+  const pronto = !!cfg.client_id; // o segredo é opcional (sem ele, o app usa PKCE como cliente público)
   const contas = cfg.contas.map((c) => ({ ...c, tok: Array.isArray(c.tok) ? c.tok[0] : c.tok }));
 
   async function salvar() {
