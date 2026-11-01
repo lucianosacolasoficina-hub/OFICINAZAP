@@ -13,6 +13,7 @@ export const GET = route(async (req) => {
     .order("created_at");
   return {
     app_id: cfg.app_id,
+    config_id: cfg.config_id,
     tem_chave: !!cfg.app_secret,
     verify_token: cfg.verify_token,
     webhook_url: igUrl("/api/webhooks/instagram"),
@@ -25,8 +26,9 @@ export const GET = route(async (req) => {
 
 // Só o administrador grava o App ID e a chave secreta do app da Meta.
 export const PUT = route(async (req) => {
-  const b = (await req.json()) as { app_id?: string; app_secret?: string };
-  if (b.app_id !== undefined && b.app_id.trim() && !/^\d{6,20}$/.test(b.app_id.trim())) throw new HttpError(400, "o App ID do Instagram tem só números");
+  const b = (await req.json()) as { app_id?: string; app_secret?: string; config_id?: string };
+  if (b.app_id !== undefined && b.app_id.trim() && !/^\d{6,20}$/.test(b.app_id.trim())) throw new HttpError(400, "o ID do app tem só números");
+  if (b.config_id !== undefined && b.config_id.trim() && !/^\d{6,25}$/.test(b.config_id.trim())) throw new HttpError(400, "o ID da configuração tem só números");
   await saveIgConfig(b);
   return { ok: true };
 });

@@ -6,6 +6,7 @@ import { useMe } from "@/lib/useMe";
 
 type Cfg = {
   app_id: string | null;
+  config_id: string | null;
   tem_chave: boolean;
   verify_token: string;
   webhook_url: string;
@@ -38,12 +39,13 @@ export function InstagramSetup() {
   const me = useMe();
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const [appId, setAppId] = useState("");
+  const [configId, setConfigId] = useState("");
   const [secret, setSecret] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState("");
   const [guia, setGuia] = useState(false);
 
-  const load = () => api<Cfg>("/api/instagram/config").then((c) => { setCfg(c); setAppId(c.app_id ?? ""); }).catch(() => {});
+  const load = () => api<Cfg>("/api/instagram/config").then((c) => { setCfg(c); setAppId(c.app_id ?? ""); setConfigId(c.config_id ?? ""); }).catch(() => {});
   useEffect(() => {
     load();
     const q = new URLSearchParams(window.location.search);
@@ -62,7 +64,7 @@ export function InstagramSetup() {
   async function salvar() {
     setSalvando(true);
     try {
-      await api("/api/instagram/config", { method: "PUT", body: JSON.stringify({ app_id: appId, ...(secret ? { app_secret: secret } : {}) }) });
+      await api("/api/instagram/config", { method: "PUT", body: JSON.stringify({ app_id: appId, config_id: configId, ...(secret ? { app_secret: secret } : {}) }) });
       setSecret("");
       await load();
       setAviso("Dados do app salvos.");
@@ -117,19 +119,20 @@ export function InstagramSetup() {
                     <span>URL de exclusão de dados:</span> <Copiar v={cfg.exclusao_url} />
                   </div>
                 </li>
-                <li>Em <b>Instagram → Configuração da API com login do Instagram</b>:
+                <li>Em <b>Casos de uso → API do Instagram → API setup with Unified login</b>: crie a configuração sugerida e preencha:
                   <div className="ig-campos">
+                    <span>URL de redirecionamento:</span> <Copiar v={cfg.redirect_uri} />
                     <span>Webhook – URL de callback:</span> <Copiar v={cfg.webhook_url} />
                     <span>Webhook – Token de verificação:</span> <Copiar v={cfg.verify_token} />
-                    <span>Login – URL de redirecionamento:</span> <Copiar v={cfg.redirect_uri} />
                   </div>
-                  Marque o campo de webhook <b>messages</b>. Copie o <b>ID do app do Instagram</b> e a <b>chave secreta do app do Instagram</b> e cole abaixo.
+                  Ligue o campo de webhook <b>messages</b>. Copie o <b>ID do app</b>, a <b>Identificação da configuração</b> e a <b>Chave secreta do aplicativo</b> (em Configurações do app → Básico) e cole abaixo.
                 </li>
                 <li>Salve aqui e clique em <b>Conectar Instagram</b>. Entre na conta da empresa e autorize.</li>
               </ol>
               <div className="ig-form">
-                <label>ID do app do Instagram<input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="só números" inputMode="numeric" /></label>
-                <label>Chave secreta do app do Instagram<input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardada (preencha só para trocar)" : "cole aqui"} autoComplete="off" /></label>
+                <label>ID do app<input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="só números" inputMode="numeric" /></label>
+                <label>Identificação da configuração<input value={configId} onChange={(e) => setConfigId(e.target.value)} placeholder="só números" inputMode="numeric" /></label>
+                <label>Chave secreta do aplicativo<input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardada (preencha só para trocar)" : "cole aqui"} autoComplete="off" /></label>
                 <button className="primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar dados do app"}</button>
               </div>
               <p className="muted" style={{ fontSize: 12 }}>A chave secreta fica guardada só no servidor e não aparece de novo na tela.</p>

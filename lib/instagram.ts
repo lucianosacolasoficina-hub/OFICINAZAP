@@ -1,27 +1,33 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "./supabase/admin";
 
-// Instagram Direct pela API oficial da Meta ("Instagram API with Instagram Login").
-// O app da Meta (App ID e chave secreta) e os tokens ficam em tabelas que só o servidor lê.
+// Instagram Direct pela API oficial da Meta.
+// Apps novos da Meta só aceitam o "login unificado" (Login do Facebook para Empresas com config_id):
+// o token é de usuário do sistema (não vence) e as chamadas vão para graph.facebook.com/{id da conta}.
+// Sem config_id, usa o login antigo do Instagram (graph.instagram.com/me).
+// O app da Meta (App ID, config_id e chave secreta) e os tokens ficam em tabelas que só o servidor lê.
 
 const GRAPH = "https://graph.instagram.com/v23.0";
+const FB_GRAPH = "https://graph.facebook.com/v23.0";
 // Endereço fixo usado com a Meta (o redirecionamento precisa ser exatamente igual ao cadastrado no app).
 export const IG_BASE = process.env.IG_BASE_URL || "https://zap.sacolasoficina.com.br";
 export const igUrl = (path: string) => new URL(path, IG_BASE).toString();
 export const IG_SCOPES = ["instagram_business_basic", "instagram_business_manage_messages"];
 
-export type IgConfig = { app_id: string | null; app_secret: string | null; verify_token: string };
+export type IgConfig = { app_id: string | null; app_secret: string | null; verify_token: string; config_id: string | null };
+export const unificado = (cfg: IgConfig) => !!cfg.config_id;
 export type IgToken = { connection_id: string; ig_user_id: string; username: string | null; access_token: string; expires_at: string | null };
 
 export async function getIgConfig(): Promise<IgConfig> {
-  const { data, error } = await supabaseAdmin().from("instagram_config").select("app_id, app_secret, verify_token").eq("id", 1).maybeSingle();
+  const { data, error } = await supabaseAdmin().from("instagram_config").select("app_id, app_secret, verify_token, config_id").eq("id", 1).maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as IgConfig) ?? { app_id: null, app_secret: null, verify_token: "" };
+  return (data as IgConfig) ?? { app_id: null, app_secret: null, verify_token: "", config_id: null };
 }
 
-export async function saveIgConfig(patch: { app_id?: string; app_secret?: string }) {
+export async function saveIgConfig(patch: { app_id?: string; app_secret?: string; config_id?: string }) {
   const p: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.app_id !== undefined) p.app_id = patch.app_id.trim() || null;
+  if (patch.config_id !== undefined) p.config_id = patch.config_id.trim() || null;
   if (patch.app_secret !== undefined && patch.app_secret.trim()) p.app_secret = patch.app_secret.trim();
   const { error } = await supabaseAdmin().from("instagram_config").update(p).eq("id", 1);
   if (error) throw new Error(error.message);
@@ -46,6 +52,16 @@ async function jsonOuErro(res: Response) {
 }
 
 export function urlAutorizacao(cfg: IgConfig, redirectUri: string, state: string) {
+  if (unificado(cfg)) {
+    const f = new URL("https://www.facebook.com/dialog/oauth");
+    f.searchParams.set("client_id", cfg.app_id ?? "");
+    f.searchParams.set("config_id", cfg.config_id ?? "");
+    f.searchParams.set("redirect_uri", redirectUri);
+    f.searchParams.set("response_type", "code");
+    f.searchParams.set("override_default_response_type", "true");
+    f.searchParams.set("state", state);
+    return f.toString();
+  }
   const u = new URL("https://www.instagram.com/oauth/authorize");
   u.searchParams.set("enable_fb_login", "0");
   u.searchParams.set("force_authentication", "1");
@@ -59,6 +75,7 @@ export function urlAutorizacao(cfg: IgConfig, redirectUri: string, state: string
 
 /** Troca o código da autorização por um token de longa duração (60 dias) e os dados da conta. */
 export async function trocarCodigo(cfg: IgConfig, code: string, redirectUri: string) {
+  if (unificado(cfg)) return trocarCodigoUnificado(cfg, code, redirectUri);
   const form = new URLSearchParams({
     client_id: cfg.app_id ?? "",
     client_secret: cfg.app_secret ?? "",
@@ -82,8 +99,36 @@ export async function trocarCodigo(cfg: IgConfig, code: string, redirectUri: str
   };
 }
 
+/** Login unificado: o código vira um token de usuário do sistema (não vence) com a conta do Instagram escolhida. */
+async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: string) {
+  const u = new URL(`${FB_GRAPH}/oauth/access_token`);
+  u.searchParams.set("client_id", cfg.app_id ?? "");
+  u.searchParams.set("client_secret", cfg.app_secret ?? "");
+  u.searchParams.set("redirect_uri", redirectUri);
+  u.searchParams.set("code", code);
+  const r = await jsonOuErro(await fetch(u, { cache: "no-store" }));
+  const token = String(r.access_token);
+  const contas = await jsonOuErro(await fetch(`${FB_GRAPH}/me/assigned_instagram_accounts?fields=id,username&access_token=${encodeURIComponent(token)}`, { cache: "no-store" }));
+  const lista = (contas.data as { id: string; username?: string }[]) ?? [];
+  if (lista.length === 0) throw new Error("nenhuma conta do Instagram foi escolhida na autorização");
+  const conta = lista[0];
+  const me = await jsonOuErro(await fetch(`${FB_GRAPH}/${conta.id}?fields=id,username,name&access_token=${encodeURIComponent(token)}`)).catch(() => ({}) as Record<string, unknown>);
+  return {
+    token,
+    expiresAt: r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000).toISOString() : null,
+    igUserId: String(conta.id),
+    username: ((me.username as string) ?? conta.username) || null,
+    name: (me.name as string) ?? null,
+  };
+}
+
 /** Pede à Meta para mandar as mensagens do Direct desta conta para o nosso webhook. */
-export async function assinarWebhook(token: string) {
+export async function assinarWebhook(token: string, igUserId?: string) {
+  const cfg = await getIgConfig();
+  if (unificado(cfg) && igUserId) {
+    await jsonOuErro(await fetch(`${FB_GRAPH}/${igUserId}/subscribed_apps?subscribed_fields=messages&access_token=${encodeURIComponent(token)}`, { method: "POST" }));
+    return;
+  }
   const campos = "messages,messaging_seen,messaging_postbacks,messaging_reactions,messaging_referrals";
   await jsonOuErro(await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=${campos}&access_token=${encodeURIComponent(token)}`, { method: "POST" }));
 }
@@ -92,8 +137,8 @@ export async function tokenDaConexao(connectionId: string): Promise<IgToken | nu
   const { data } = await supabaseAdmin().from("instagram_tokens").select("*").eq("connection_id", connectionId).maybeSingle();
   if (!data) return null;
   const t = data as IgToken;
-  // Renova sozinho quando faltam menos de 10 dias para vencer.
-  if (t.expires_at && new Date(t.expires_at).getTime() - Date.now() < 10 * 864e5) {
+  // Token do login unificado não vence (expires_at vazio). O do login antigo renova sozinho quando faltam menos de 10 dias para vencer.
+  if (t.expires_at && !unificado(await getIgConfig()) && new Date(t.expires_at).getTime() - Date.now() < 10 * 864e5) {
     try {
       const r = await jsonOuErro(await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(t.access_token)}`));
       t.access_token = String(r.access_token);
@@ -114,7 +159,8 @@ export async function tokenPorConta(igUserId: string): Promise<IgToken | null> {
 /** Nome e @ de quem mandou mensagem (o Instagram identifica o cliente por um id próprio). */
 export async function perfil(token: string, igsid: string): Promise<{ name: string | null; username: string | null }> {
   try {
-    const r = await jsonOuErro(await fetch(`${GRAPH}/${igsid}?fields=name,username&access_token=${encodeURIComponent(token)}`));
+    const base = unificado(await getIgConfig()) ? FB_GRAPH : GRAPH;
+    const r = await jsonOuErro(await fetch(`${base}/${igsid}?fields=name,username&access_token=${encodeURIComponent(token)}`));
     return { name: (r.name as string) || null, username: (r.username as string) || null };
   } catch {
     return { name: null, username: null };
@@ -124,8 +170,9 @@ export async function perfil(token: string, igsid: string): Promise<{ name: stri
 export async function enviarTexto(connectionId: string, igsid: string, text: string): Promise<{ waMessageId?: string }> {
   const t = await tokenDaConexao(connectionId);
   if (!t) throw new Error("Instagram desconectado: conecte de novo na tela WhatsApp");
+  const url = unificado(await getIgConfig()) ? `${FB_GRAPH}/${t.ig_user_id}/messages` : `${GRAPH}/me/messages`;
   const r = await jsonOuErro(
-    await fetch(`${GRAPH}/me/messages`, {
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${t.access_token}` },
       body: JSON.stringify({ recipient: { id: igsid }, message: { text: text.slice(0, 1000) } }),

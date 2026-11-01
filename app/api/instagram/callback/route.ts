@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       updated_at: new Date().toISOString(),
     });
     if (up.error) throw new Error(up.error.message);
-    await assinarWebhook(r.token);
+    await assinarWebhook(r.token, r.igUserId);
     return volta("ok");
   } catch (err) {
     console.error("Erro ao conectar Instagram", err);
