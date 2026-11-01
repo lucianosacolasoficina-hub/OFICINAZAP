@@ -534,3 +534,5 @@ button.cc-item.nova b { font-weight: 800; }
 .ig-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
 .ig-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; flex: 1 1 220px; }
 @media (max-width: 700px) { .ig-campos { grid-template-columns: 1fr; } }
+.mail-box { background: linear-gradient(135deg, #f2f8ff, #fff); }
+.mail-btn { background: linear-gradient(90deg, #0a64d6, #2b88f0) !important; }

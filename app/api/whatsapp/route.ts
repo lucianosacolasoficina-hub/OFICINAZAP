@@ -10,7 +10,7 @@ export const GET = route(async () => {
     supabaseAdmin().from("departments").select("id, name").order("name"),
   ]);
   return {
-    connections: await Promise.all(connections.filter((c) => c.channel !== "instagram").map(syncState)),
+    connections: await Promise.all(connections.filter((c) => !c.channel || c.channel === "whatsapp").map(syncState)),
     departments: departments.data ?? [],
     max: MAX_CONNECTIONS,
   };
@@ -21,7 +21,7 @@ export const POST = route(async (req) => {
   requireEvolution();
   const { name, department_id } = (await req.json()) as { name?: string; department_id?: string | null };
   if (!name?.trim()) throw new HttpError(400, "informe um nome para o número");
-  if ((await listConnections()).filter((c) => c.channel !== "instagram").length >= MAX_CONNECTIONS) {
+  if ((await listConnections()).filter((c) => !c.channel || c.channel === "whatsapp").length >= MAX_CONNECTIONS) {
     throw new HttpError(400, `limite de ${MAX_CONNECTIONS} números atingido`);
   }
   return createConnection(name.trim(), department_id || null);

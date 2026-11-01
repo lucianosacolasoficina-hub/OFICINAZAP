@@ -64,6 +64,8 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   const escrita = method !== "GET";
   if (path.startsWith("/api/team")) return "admin";
   if (path.startsWith("/api/instagram")) return escrita ? "admin" : "whatsapp";
+  if (path === "/api/email/sync") return null;
+  if (path.startsWith("/api/email")) return escrita ? "admin" : "whatsapp";
   if (path.startsWith("/api/whatsapp")) return "whatsapp";
   if (path.startsWith("/api/stats")) return "ver_todas";
   if (path.startsWith("/api/gestao")) return "sistema_gestao";
