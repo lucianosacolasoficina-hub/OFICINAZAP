@@ -585,3 +585,4 @@ button.cc-item.nova b { font-weight: 800; }
 .kb-coms { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; max-height: 200px; overflow: auto; }
 .kb-com { background: #f6f7f9; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 @media (max-width: 700px) { .kb-col { flex-basis: 85vw; } .kb-grid { grid-template-columns: 1fr; } }
+.kb-top select { width: auto !important; max-width: 220px; }
