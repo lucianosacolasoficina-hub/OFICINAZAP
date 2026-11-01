@@ -772,3 +772,4 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 @media (min-width: 1200px) { .list { width: 380px; } }
 .ib-foto { opacity: 0; transition: opacity .25s; background: none; }
 .ib-foto.ok { opacity: 1; background: #fff; }
+.t-del { border-color: #dc2626 !important; color: #b91c1c; margin-left: auto; } .t-del:hover { background: #fef2f2 !important; }

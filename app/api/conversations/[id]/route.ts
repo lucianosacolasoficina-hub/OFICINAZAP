@@ -82,3 +82,20 @@ export const PATCH = route<IdCtx>(async (req, { params }, userId) => {
   });
   await addMessage(id, { direction: "out", sender: "system", body: LABELS[status], agent_id: userId });
 });
+
+// Apaga a conversa inteira do OficinaZap: some da lista, com as mensagens, fotos e arquivos.
+// O contato continua (e o negócio do funil e as tarefas ficam, só sem o vínculo com a conversa).
+// No celular as mensagens continuam. Se o cliente escrever de novo, começa uma conversa nova.
+export const DELETE = route<IdCtx>(async (_req, { params }) => {
+  const { id } = await params;
+  const db = supabaseAdmin();
+  const { data: conv, error } = await db.from("conversations").select("id").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!conv) throw new HttpError(404, "conversa não encontrada");
+  const { data: comMidia } = await db.from("messages").select("media_url").eq("conversation_id", id).not("media_url", "is", null);
+  const paths = (comMidia ?? []).map((m) => m.media_url as string).filter(Boolean);
+  for (let i = 0; i < paths.length; i += 100) await db.storage.from("media").remove(paths.slice(i, i + 100));
+  const del = await db.from("conversations").delete().eq("id", id);
+  if (del.error) throw new Error(del.error.message);
+  return { ok: true };
+});

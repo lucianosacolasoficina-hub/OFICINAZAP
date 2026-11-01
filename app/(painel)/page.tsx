@@ -619,6 +619,7 @@ export default function InboxPage() {
             infoOpen={infoOpen}
             onToggleHist={() => { setHistOpen(!histOpen); if (!histOpen) setInfoOpen(false); }}
             histOpen={histOpen}
+            onDelete={() => { setSelected(null); refresh(); }}
           />
           {histOpen && (
             <div className="side-wrap hp-wrap">
@@ -935,6 +936,7 @@ function Chat({
   infoOpen,
   onToggleHist,
   histOpen,
+  onDelete,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
@@ -950,6 +952,7 @@ function Chat({
   infoOpen?: boolean;
   onToggleHist?: () => void;
   histOpen?: boolean;
+  onDelete?: () => void;
 }) {
   const { conversation: c, messages } = detail;
   const me = useMe();
@@ -1191,6 +1194,22 @@ function Chat({
               {qBusca.length >= 2 && <small>{achados} {achados === 1 ? "mensagem" : "mensagens"}</small>}
               <button onClick={() => setBusca(null)} aria-label="Fechar busca">×</button>
             </span>
+          )}
+          {me?.perms.apagar_historico && onDelete && (
+            <button
+              className="t-del"
+              title="Apagar esta conversa do OficinaZap (no celular continua)"
+              onClick={async () => {
+                const nome = c.contact.name || formatPhone(c.contact.phone);
+                if (!confirm(`Apagar a conversa com ${nome}?\n\nEla some da lista, com todas as mensagens, fotos e arquivos, e não dá para recuperar. O contato continua cadastrado e no celular as mensagens continuam. Se o cliente escrever de novo, abre uma conversa nova.`)) return;
+                try {
+                  await api(`/api/conversations/${c.id}`, { method: "DELETE" });
+                  onDelete();
+                } catch (err) {
+                  alert((err as Error).message);
+                }
+              }}
+            >🗑 Apagar conversa</button>
           )}
         </nav>
       </header>

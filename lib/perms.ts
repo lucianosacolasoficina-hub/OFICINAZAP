@@ -71,6 +71,7 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   if (path.startsWith("/api/stats")) return "ver_todas";
   if (path.startsWith("/api/gestao")) return "sistema_gestao";
   if (/^\/api\/conversations\/[^/]+\/history/.test(path)) return "apagar_historico";
+  if (/^\/api\/conversations\/[^/]+$/.test(path) && method === "DELETE") return "apagar_historico";
   if (path.startsWith("/api/crm") && escrita) return "admin";
   if (/^\/api\/tarefas\/quadros\/[^/]+$/.test(path) && method === "DELETE") return "admin";
   if (path.startsWith("/api/tarefas")) return "tarefas";
