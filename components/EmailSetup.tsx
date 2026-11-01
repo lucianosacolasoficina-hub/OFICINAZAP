@@ -117,7 +117,7 @@ export function EmailSetup() {
               </ol>
               <div className="ig-form">
                 <label>ID do aplicativo (cliente)<input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
-                <label>Valor do segredo do cliente<input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardado (preencha só para trocar)" : "cole aqui"} autoComplete="off" /></label>
+                <label>Valor do segredo do cliente<input type="text" className="segredo" name="segredo-app" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardado (preencha só para trocar)" : "cole aqui"} autoComplete="off" spellCheck={false} data-1p-ignore data-lpignore="true" data-form-type="other" /></label>
                 <label>Tipo de conta
                   <select value={tenant} onChange={(e) => setTenant(e.target.value)}>
                     <option value="consumers">Somente contas pessoais (Outlook/Hotmail)</option>

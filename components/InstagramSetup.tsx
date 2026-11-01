@@ -132,7 +132,7 @@ export function InstagramSetup() {
               <div className="ig-form">
                 <label>ID do app<input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="só números" inputMode="numeric" /></label>
                 <label>Identificação da configuração<input value={configId} onChange={(e) => setConfigId(e.target.value)} placeholder="só números" inputMode="numeric" /></label>
-                <label>Chave secreta do aplicativo<input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardada (preencha só para trocar)" : "cole aqui"} autoComplete="off" /></label>
+                <label>Chave secreta do aplicativo<input type="text" className="segredo" name="segredo-app" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.tem_chave ? "já guardada (preencha só para trocar)" : "cole aqui"} autoComplete="off" spellCheck={false} data-1p-ignore data-lpignore="true" data-form-type="other" /></label>
                 <button className="primary" disabled={salvando} onClick={salvar}>{salvando ? "Salvando…" : "Salvar dados do app"}</button>
               </div>
               <p className="muted" style={{ fontSize: 12 }}>A chave secreta fica guardada só no servidor e não aparece de novo na tela.</p>

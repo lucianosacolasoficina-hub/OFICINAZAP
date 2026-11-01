@@ -586,3 +586,6 @@ button.cc-item.nova b { font-weight: 800; }
 .kb-com { background: #f6f7f9; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 @media (max-width: 700px) { .kb-col { flex-basis: 85vw; } .kb-grid { grid-template-columns: 1fr; } }
 .kb-top select { width: auto !important; max-width: 220px; }
+
+/* Campos de chave secreta: texto escondido sem ser "password", para o navegador não preencher com a senha do login. */
+input.segredo { -webkit-text-security: disc; font-family: monospace; }

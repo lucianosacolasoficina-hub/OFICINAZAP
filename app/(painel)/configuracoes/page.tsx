@@ -63,7 +63,7 @@ function BlingCard() {
             Cole aqui as chaves do aplicativo que você criou no Bling (Central de Extensões &gt; Área do Integrador &gt; seu app &gt; Informações do App).
           </p>
           <label>Client Id<input value={clientId} onChange={(e) => setClientId(e.target.value)} required autoComplete="off" /></label>
-          <label>Client Secret<input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required autoComplete="off" /></label>
+          <label>Client Secret<input type="text" className="segredo" name="segredo-app" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required autoComplete="off" spellCheck={false} data-1p-ignore data-lpignore="true" data-form-type="other" /></label>
           <div className="row" style={{ marginTop: 8 }}>
             <button className="primary">Salvar e conectar ao Bling</button>
             {editing && <button type="button" onClick={() => setEditing(false)}>Cancelar</button>}
