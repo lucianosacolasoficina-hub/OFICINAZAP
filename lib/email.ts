@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
 import { activeConversation, addMessage, setMessageMedia, upsertContact } from "./db";
 import { saveMedia } from "./media";
 import { supabaseAdmin } from "./supabase/admin";
@@ -38,13 +37,6 @@ export async function saveEmailConfig(p: { client_id?: string; client_secret?: s
 }
 
 const authBase = (cfg: EmailConfig) => `https://login.microsoftonline.com/${cfg.tenant || "consumers"}/oauth2/v2.0`;
-
-/** Sem segredo: o app funciona como "cliente público" e a troca do código é protegida por PKCE. */
-export function pkce() {
-  const verifier = randomBytes(32).toString("base64url");
-  const challenge = createHash("sha256").update(verifier).digest("base64url");
-  return { verifier, challenge };
-}
 
 export function urlAutorizacaoEmail(cfg: EmailConfig, state: string, challenge?: string) {
   const u = new URL(`${authBase(cfg)}/authorize`);

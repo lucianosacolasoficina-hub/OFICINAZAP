@@ -1,8 +1,14 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/supabase/server";
 import { getAgent } from "@/lib/perms";
-import { emailUrl, getEmailConfig, pkce, urlAutorizacaoEmail } from "@/lib/email";
+import { emailUrl, getEmailConfig, urlAutorizacaoEmail } from "@/lib/email";
+
+/** Sem segredo: o app funciona como "cliente público" e a troca do código é protegida por PKCE. */
+function pkce() {
+  const verifier = randomBytes(32).toString("base64url");
+  return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
+}
 import { publicUrl } from "@/lib/origin";
 
 // Botão "Conectar Outlook": manda o administrador para entrar na conta Microsoft e autorizar.
