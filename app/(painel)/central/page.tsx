@@ -121,6 +121,25 @@ export default function CentralPage() {
   const [sum, setSum] = useState<Summary | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
   const [erro, setErro] = useState("");
+  // Arrumação: "lado" = colunas lado a lado (rola para o lado); "grade" = todas na tela (até 6: 3 em cima e 3 embaixo).
+  const [modo, setModo] = useState<"lado" | "grade">("grade");
+  const [ocultos, setOcultos] = useState<string[]>([]);
+  const [cfg, setCfg] = useState(false);
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem("oz.centralModo");
+      if (m === "lado" || m === "grade") setModo(m);
+      setOcultos(JSON.parse(localStorage.getItem("oz.centralOcultos") || "[]"));
+    } catch {}
+  }, []);
+  const mudarModo = (m: "lado" | "grade") => {
+    setModo(m);
+    try { localStorage.setItem("oz.centralModo", m); } catch {}
+  };
+  const mudarOcultos = (o: string[]) => {
+    setOcultos(o);
+    try { localStorage.setItem("oz.centralOcultos", JSON.stringify(o)); } catch {}
+  };
 
   useEffect(() => {
     const ler = () => api<Summary>("/api/conversations/summary?view=todas&queue=todas").then(setSum).catch((e) => setErro(e.message));
@@ -139,7 +158,21 @@ export default function CentralPage() {
     <div className="cc">
       <div className="cc-top">
         <h1>Central de atendimento</h1>
-        <span className="muted">Uma coluna para cada número de WhatsApp · atualiza sozinha · clique numa conversa para responder</span>
+        <span className="muted">Uma caixa para cada número/canal · atualiza sozinha · clique numa conversa para responder</span>
+        <span className="cc-modo">
+          <button className={modo === "grade" ? "on" : ""} onClick={() => mudarModo("grade")} title="Todas as caixas na tela (3 em cima, 3 embaixo)">▦ Todas na tela</button>
+          <button className={modo === "lado" ? "on" : ""} onClick={() => mudarModo("lado")} title="Colunas lado a lado, rolando para o lado">▥ Lado a lado</button>
+          <button onClick={() => setCfg(!cfg)} aria-expanded={cfg} title="Escolher quais caixas aparecem">⚙ Caixas</button>
+          {cfg && sum && (
+            <span className="cc-cfg" onMouseLeave={() => setCfg(false)}>
+              {sum.connections.map((c) => (
+                <label key={c.id}>
+                  <input type="checkbox" checked={!ocultos.includes(c.id)} onChange={(e) => mudarOcultos(e.target.checked ? ocultos.filter((x) => x !== c.id) : [...ocultos, c.id])} /> {c.name}
+                </label>
+              ))}
+            </span>
+          )}
+        </span>
       </div>
       {erro && <p style={{ color: "var(--danger)", padding: "0 16px" }}>{erro}</p>}
       {!!sum?.views?.atrasadas && (
@@ -147,9 +180,9 @@ export default function CentralPage() {
           ⚠ {sum.views.atrasadas} {sum.views.atrasadas === 1 ? "cliente esperando" : "clientes esperando"} resposta há mais de {sum.alertas?.espera_min ?? LATE_MIN} min (em vermelho nas colunas).
         </p>
       )}
-      <div className="cc-cols">
+      <div className={`cc-cols${modo === "grade" ? " grade" : ""}`}>
         {!sum && <p className="muted" style={{ padding: 16 }}>Carregando…</p>}
-        {sum?.connections.map((c) => (
+        {sum?.connections.filter((c) => !ocultos.includes(c.id)).map((c) => (
           <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} lateMin={sum.alertas?.espera_min} />
         ))}
       </div>

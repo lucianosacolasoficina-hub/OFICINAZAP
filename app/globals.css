@@ -634,3 +634,18 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .hp-oc-lista li { display: grid; grid-template-columns: 18px auto 1fr; gap: 6px; font-size: 12.5px; padding: 4px 2px; border-bottom: 1px dashed var(--border); }
 .hp-oc-d { color: var(--muted); white-space: nowrap; }
 .hp-oc-t em { color: var(--muted); font-style: normal; }
+
+/* Central: todas as caixas na tela (3 por linha) e escolha das caixas */
+.cc-modo { margin-left: auto; display: inline-flex; gap: 6px; position: relative; flex-wrap: wrap; }
+.cc-modo button { font-size: 12.5px; padding: 4px 10px; border-radius: 99px; }
+.cc-modo button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.cc-cfg { position: absolute; right: 0; top: 100%; z-index: 30; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.cc-cfg label { display: flex; gap: 6px; align-items: center; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.cc-cols.grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: auto; }
+.cc-cols.grade .cc-col { max-width: none; min-width: 0; }
+.cc-cols.grade .cc-h { padding: 6px 10px; gap: 5px; }
+.cc-cols.grade .cc-stats b { font-size: 14px; }
+.cc-cols.grade .cc-stats span { padding: 2px; font-size: 10px; }
+.cc-cols.grade .cc-f button { font-size: 11px; padding: 2px 7px; }
+@media (max-width: 1000px) { .cc-cols.grade { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(360px, 1fr); } }
+@media (max-width: 640px) { .cc-cols.grade { grid-template-columns: 1fr; } }
