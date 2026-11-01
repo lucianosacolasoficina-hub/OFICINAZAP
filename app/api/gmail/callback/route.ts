@@ -5,6 +5,7 @@ import { emailUrl } from "@/lib/email";
 import { sincronizarImap, trocarCodigoGoogle } from "@/lib/emailImap";
 import { publicUrl } from "@/lib/origin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sincronizarGoogle, trocarCodigoContatos } from "@/lib/googleSync";
 
 export const maxDuration = 60;
 
@@ -23,6 +24,25 @@ export async function GET(req: NextRequest) {
   if (!p.get("state") || p.get("state") !== req.cookies.get("gmail_state")?.value) return volta("expirou");
   const code = p.get("code");
   if (!code) return volta("cancelado");
+  // Volta da ligação com o Google Contatos (state começa com "ct_").
+  if (p.get("state")!.startsWith("ct_")) {
+    const voltaCt = (q: string) => {
+      const r = NextResponse.redirect(publicUrl(req, `/contatos?google=${q}`));
+      r.cookies.delete("gmail_state");
+      return r;
+    };
+    if (agent.role !== "admin") return voltaCt("sem-permissao");
+    try {
+      await trocarCodigoContatos(code, emailUrl("/api/gmail/callback"));
+      after(async () => {
+        await sincronizarGoogle({ completo: true }).catch((e) => console.error("primeira sincronização Google Contatos", e));
+      });
+      return voltaCt("ok");
+    } catch (err) {
+      console.error("Erro ao ligar Google Contatos", err);
+      return voltaCt(`erro&msg=${encodeURIComponent((err as Error).message.slice(0, 300))}`);
+    }
+  }
   try {
     const r = await trocarCodigoGoogle(code, emailUrl("/api/gmail/callback"));
     const db = supabaseAdmin();

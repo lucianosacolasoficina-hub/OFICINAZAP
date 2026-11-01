@@ -27,6 +27,7 @@ export default function ContactsPage() {
         <input placeholder="Buscar por nome ou telefone" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1 }} />
         <button className="primary" onClick={() => setShowImport((v) => !v)}>Importar do Google</button>
       </div>
+      <GoogleSync onDone={() => setReload((n) => n + 1)} />
       {showImport && <ImportCard onDone={() => setReload((n) => n + 1)} />}
       <table>
         <thead>
@@ -120,6 +121,67 @@ function ImportCard({ onDone }: { onDone: () => void }) {
         </p>
       )}
       {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+    </div>
+  );
+}
+
+type GStatus = { conectado: boolean; conta: string | null; ultima: string | null; erro: string | null; ligados: number; stats: Record<string, number> | null };
+
+// Ligação com o Google Contatos (nos dois sentidos): nomes do Google atualizam aqui e contatos novos daqui vão para o Google.
+function GoogleSync({ onDone }: { onDone: () => void }) {
+  const [st, setSt] = useState<GStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const ler = () => api<GStatus>("/api/google-contatos").then(setSt).catch(() => {});
+  useEffect(() => {
+    ler();
+    const q = new URLSearchParams(window.location.search);
+    const g = q.get("google");
+    if (g === "ok") setMsg("Google Contatos ligado. A primeira sincronização está rodando: em alguns minutos os contatos aparecem nos dois lados.");
+    else if (g === "sem-app") setMsg("Falta configurar o app do Google (o mesmo do Gmail) em Conexões.");
+    else if (g === "sem-permissao") setMsg("Só o administrador pode ligar o Google Contatos.");
+    else if (g) setMsg(`Não deu certo: ${q.get("msg") || g}`);
+  }, []);
+  async function sincronizar() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await api<Record<string, number>>("/api/google-contatos", { method: "POST" });
+      setMsg(`Pronto: ${r.criadosNoGoogle ?? 0} enviados ao Google, ${r.nomesAtualizados ?? 0} nomes atualizados do Google, ${r.nomesEnviados ?? 0} nomes alterados enviados.`);
+      onDone();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+      ler();
+    }
+  }
+  if (!st) return null;
+  return (
+    <div className="card gsync">
+      <div className="gsync-h">
+        <b>🔄 Google Contatos</b>
+        {st.conectado ? <span className="gsync-ok">ligado · {st.conta}</span> : <span className="muted">não ligado</span>}
+      </div>
+      {st.conectado ? (
+        <>
+          <p className="muted" style={{ margin: "6px 0" }}>
+            Nos dois sentidos, a cada 15 minutos: o nome salvo no Google atualiza o contato aqui, e contato novo com nome no OficinaZap é salvo no Google (aparece no celular).
+            {" "}{st.ligados} contatos ligados{st.ultima ? ` · última vez ${formatTime(st.ultima)}` : ""}.
+          </p>
+          {st.erro && <p style={{ color: "var(--danger)", margin: "6px 0" }}>Último erro: {st.erro}</p>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="primary" disabled={busy} onClick={sincronizar}>{busy ? "Sincronizando…" : "Sincronizar agora"}</button>
+            <a className="btn" href="/api/google-contatos/connect">Trocar a conta</a>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="muted" style={{ margin: "6px 0" }}>Liga os contatos do OficinaZap ao Google Contatos de lucianosacolasoficina@gmail.com, nos dois sentidos.</p>
+          <a className="btn primary" href="/api/google-contatos/connect">Ligar ao Google Contatos</a>
+        </>
+      )}
+      {msg && <p style={{ margin: "8px 0 0", fontWeight: 600 }}>{msg}</p>}
     </div>
   );
 }

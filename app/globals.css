@@ -813,3 +813,4 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
   .nav .lado-tg.nav-tg { width: 26px !important; height: 26px !important; min-width: 0 !important; left: auto !important; right: -13px !important; margin: 0 !important; display: grid !important; place-items: center; gap: 0 !important; font-size: 18px !important; }
   .nav.nav-oculto .lado-tg.nav-tg { right: -30px !important; }
 }
+.gsync-h { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .gsync-ok { color: #15803d; font-weight: 600; font-size: 13px; } a.btn { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); text-decoration: none; color: inherit; font-weight: 600; } a.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
