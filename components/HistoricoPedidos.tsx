@@ -30,6 +30,96 @@ const brl = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency",
 const dBR = (d?: string | null) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "—");
 const FIM = ["Concluído", "Entregue"];
 
+type Oc = { em: string; tipo: string; texto: string; por: string };
+type OcResp = { numero: string; cliente: string | null; telefone: string | null; etapa: string | null; ocorrencias: Oc[] };
+const OC_ICON: Record<string, string> = { os: "🧾", fat: "💰", etapa: "↻", nf: "📄", fin: "$", criada: "✚", origem: "↗", nota: "✎", entrega: "📦", contato: "☎", problema: "⚠", prazo: "⏱", pagamento: "$" };
+const OC_TIPOS: [string, string][] = [["nota", "✎ Anotação"], ["contato", "☎ Contato com o cliente"], ["problema", "⚠ Problema"], ["prazo", "⏱ Prazo"], ["pagamento", "$ Pagamento"], ["entrega", "📦 Entrega"]];
+const quando = (em: string) => (em ? `${dBR(em.slice(0, 10))} ${em.slice(11, 16)}` : "");
+const quem = (por: string) => (por && !/^u_|^[0-9a-f-]{20,}$/i.test(por) ? por : "");
+const escHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+/** Ocorrências de um pedido/proposta: lista, lançar nova, imprimir e mandar pelo WhatsApp. */
+function Ocorrencias({ col, id, rotulo }: { col: "pedidos" | "orcamentos"; id: string; rotulo: string }) {
+  const [d, setD] = useState<OcResp | null>(null);
+  const [erro, setErro] = useState("");
+  const [texto, setTexto] = useState("");
+  const [tipo, setTipo] = useState("nota");
+  const [salvando, setSalvando] = useState(false);
+  const [ocAberta, setOcAberta] = useState<string | null>(null);
+  const carregar = () =>
+    api<OcResp>(`/api/gestao/ocorrencias?col=${col}&id=${encodeURIComponent(id)}`)
+      .then((r) => { setD(r); setErro(""); })
+      .catch((e) => setErro((e as Error).message));
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [col, id]);
+
+  async function lancar() {
+    if (!texto.trim()) return;
+    setSalvando(true);
+    try {
+      await api("/api/gestao/ocorrencias", { method: "POST", body: JSON.stringify({ col, id, texto, tipo }) });
+      setTexto("");
+      setTipo("nota");
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function textoWhats() {
+    const l = (d?.ocorrencias ?? []).slice(0, 20).map((o) => `• ${quando(o.em)} — ${o.texto}`);
+    return `*Ocorrências do ${rotulo}*${d?.cliente ? `\nCliente: ${d.cliente}` : ""}${d?.etapa ? `\nSituação: ${d.etapa}` : ""}\n\n${l.join("\n") || "Nenhuma ocorrência."}`;
+  }
+
+  function imprimir() {
+    const w = window.open("", "_blank", "width=800,height=900");
+    if (!w) return;
+    const linhas = (d?.ocorrencias ?? [])
+      .map((o) => `<tr><td>${escHtml(quando(o.em))}</td><td>${OC_ICON[o.tipo] ?? "•"}</td><td>${escHtml(o.texto)}</td><td>${escHtml(quem(o.por))}</td></tr>`)
+      .join("");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ocorrências - ${escHtml(rotulo)}</title>
+<style>body{font-family:Arial,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0 0 4px}p{margin:2px 0;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12.5px}th,td{border:1px solid #ccc;padding:6px;text-align:left;vertical-align:top}th{background:#f0f0f0}td:nth-child(1){white-space:nowrap}</style></head>
+<body><h1>Sacolas Oficina — Ocorrências do ${escHtml(rotulo)}</h1>${d?.cliente ? `<p><b>Cliente:</b> ${escHtml(d.cliente)}</p>` : ""}${d?.etapa ? `<p><b>Situação:</b> ${escHtml(d.etapa)}</p>` : ""}<p><b>Emitido em:</b> ${new Date().toLocaleString("pt-BR")}</p>
+<table><thead><tr><th>Data</th><th></th><th>Ocorrência</th><th>Por</th></tr></thead><tbody>${linhas || '<tr><td colspan="4">Nenhuma ocorrência.</td></tr>'}</tbody></table>
+<script>window.onload=function(){window.print()}</script></body></html>`);
+    w.document.close();
+  }
+
+  return (
+    <div className="hp-oc">
+      <div className="hp-oc-form">
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo da ocorrência">
+          {OC_TIPOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Nova ocorrência (ex.: cliente pediu para adiantar a entrega)" />
+        <button className="primary" disabled={salvando || !texto.trim()} onClick={lancar}>{salvando ? "Lançando…" : "＋ Lançar ocorrência"}</button>
+      </div>
+      <div className="hp-oc-acts">
+        <button onClick={imprimir} disabled={!d}>🖨 Imprimir</button>
+        <button onClick={() => rascunho(textoWhats())} disabled={!d}>💬 Enviar pelo WhatsApp</button>
+      </div>
+      {erro && <p className="hp-erro">⚠ {erro}</p>}
+      {!d && !erro && <p className="muted hp-sm">Carregando ocorrências…</p>}
+      {d && d.ocorrencias.length === 0 && <p className="muted hp-sm">Nenhuma ocorrência ainda.</p>}
+      {d && d.ocorrencias.length > 0 && (
+        <ul className="hp-oc-lista">
+          {d.ocorrencias.slice(0, 80).map((o, i) => (
+            <li key={i}>
+              <span className="hp-oc-i">{OC_ICON[o.tipo] ?? "•"}</span>
+              <span className="hp-oc-d">{quando(o.em)}</span>
+              <span className="hp-oc-t">{o.texto}{quem(o.por) && <em> — {quem(o.por)}</em>}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Coloca um texto na caixa de resposta da conversa (o atendente revisa e envia). */
 export function rascunho(texto: string) {
   window.dispatchEvent(new CustomEvent("zap-rascunho", { detail: texto }));
@@ -44,6 +134,7 @@ export function HistoricoPedidos({ contactId, contactName, onClose }: { contactI
   const [q, setQ] = useState("");
   const [achados, setAchados] = useState<Achado[] | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [ocAberta, setOcAberta] = useState<string | null>(null);
   const seq = useRef(0);
 
   async function carregar() {
@@ -205,9 +296,11 @@ export function HistoricoPedidos({ contactId, contactName, onClose }: { contactI
                       </div>
                       {p.itens && <div className="hp-sm hp-it" title={p.itens}>{p.itens}</div>}
                       <div className="hp-acts">
+                        <button className={`hp-oc-btn${ocAberta === p.id ? " on" : ""}`} onClick={() => setOcAberta(ocAberta === p.id ? null : p.id)}>📋 Ocorrências</button>
                         <a href={`${site}/#ped=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener">Abrir no sistema ↗</a>
                         {!FIM.includes(p.etapa) && <button onClick={() => rascunho(textoStatus(p))}>💬 Status para o cliente</button>}
                       </div>
+                      {ocAberta === p.id && <Ocorrencias col="pedidos" id={p.id} rotulo={`pedido nº ${p.numero}`} />}
                     </div>
                   ))}
                 </div>
@@ -226,8 +319,10 @@ export function HistoricoPedidos({ contactId, contactName, onClose }: { contactI
                       {o.situacao && <div className="hp-l2"><span className="hp-et">{o.situacao}</span></div>}
                       {o.itens && <div className="hp-sm hp-it" title={o.itens}>{o.itens}</div>}
                       <div className="hp-acts">
+                        <button className={`hp-oc-btn${ocAberta === o.id ? " on" : ""}`} onClick={() => setOcAberta(ocAberta === o.id ? null : o.id)}>📋 Ocorrências</button>
                         <a href={`${site}/#orc=${encodeURIComponent(o.id)}`} target="_blank" rel="noopener">Abrir no sistema ↗</a>
                       </div>
+                      {ocAberta === o.id && <Ocorrencias col="orcamentos" id={o.id} rotulo={`orçamento nº ${o.numero}`} />}
                     </div>
                   ))}
                 </div>

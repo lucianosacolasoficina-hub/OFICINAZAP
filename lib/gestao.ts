@@ -139,3 +139,15 @@ export function historicoGestao(opts: { telefone?: string | null; cliente?: stri
 export function buscarClientesGestao(q: string) {
   return rpcGestao<ClienteBusca[]>("zap_clientes_busca", { p_q: q });
 }
+
+// ---------- Ocorrências do pedido/orçamento (lidas e lançadas no sistema de gestão) ----------
+export type Ocorrencia = { em: string; tipo: string; texto: string; por: string };
+export type GestaoOcorrencias = { id: string; col: "pedidos" | "orcamentos"; numero: string; cliente: string | null; telefone: string | null; etapa: string | null; ocorrencias: Ocorrencia[] };
+
+export function ocorrenciasGestao(col: "pedidos" | "orcamentos", id: string) {
+  return rpcGestao<GestaoOcorrencias>("zap_ocorrencias", { p_col: col, p_id: id });
+}
+
+export function lancarOcorrenciaGestao(col: "pedidos" | "orcamentos", id: string, texto: string, tipo: string, por: string) {
+  return rpcGestao<{ ok: boolean; em: string }>("zap_ocorrencia_add", { p_col: col, p_id: id, p_texto: texto, p_tipo: tipo, p_por: por });
+}
