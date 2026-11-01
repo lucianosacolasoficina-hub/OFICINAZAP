@@ -6,6 +6,7 @@ export const PERMS = {
   apagar_historico: { label: "Apagar histórico de mensagens", desc: "Botão 🗑 Apagar histórico na conversa", padrao: false },
   sistema_gestao: { label: "Ver pedidos e saldo do sistema de gestão", desc: "Quadro 📦 Sistema de gestão ao lado da conversa", padrao: true },
   funil: { label: "Funil de vendas", desc: "Ver e mover os cards do funil", padrao: true },
+  tarefas: { label: "Tarefas da equipe (kanban)", desc: "Ver, criar e mover cartões no quadro de tarefas", padrao: true },
   contatos: { label: "Editar e importar contatos", desc: "Alterar nome/etiquetas e importar do Google", padrao: true },
   departamentos: { label: "Gerenciar departamentos", desc: "Criar, editar e excluir departamentos", padrao: false },
   whatsapp: { label: "Conectar números de WhatsApp", desc: "Tela WhatsApp: ler QR Code, desconectar", padrao: false },
@@ -71,6 +72,8 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   if (path.startsWith("/api/gestao")) return "sistema_gestao";
   if (/^\/api\/conversations\/[^/]+\/history/.test(path)) return "apagar_historico";
   if (path.startsWith("/api/crm") && escrita) return "admin";
+  if (/^\/api\/tarefas\/quadros\/[^/]+$/.test(path) && method === "DELETE") return "admin";
+  if (path.startsWith("/api/tarefas")) return "tarefas";
   if (path.startsWith("/api/deals")) return "funil";
   if ((path.startsWith("/api/settings") || path.startsWith("/api/quick-replies") || path.startsWith("/api/bling")) && escrita) return "configuracoes";
   if (path.startsWith("/api/departments") && escrita) return "departamentos";

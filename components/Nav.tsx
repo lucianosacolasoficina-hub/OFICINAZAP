@@ -11,6 +11,7 @@ const LINKS: { href: string; label: string; short: string; icon: string; perm?: 
   { href: "/central", label: "Central (colunas)", short: "Central", icon: "columns" },
   { href: "/painel", label: "Painel", short: "Painel", icon: "chart", perm: "ver_todas" },
   { href: "/funil", label: "Funil de vendas", short: "Funil", icon: "funnel", perm: "funil" },
+  { href: "/tarefas", label: "Tarefas da equipe", short: "Tarefas", icon: "check", perm: "tarefas" },
   { href: "/contatos", label: "Contatos", short: "Contatos", icon: "users" },
   { href: "/orcamentos", label: "Orçamentos", short: "Orçamentos", icon: "doc" },
   { href: "/departamentos", label: "Departamentos", short: "Deptos.", icon: "building", perm: "departamentos" },

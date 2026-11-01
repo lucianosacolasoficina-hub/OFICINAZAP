@@ -973,6 +973,19 @@ function Chat({
                     </select>
                   </label>
                 )}
+                {me?.perms.tarefas && (
+                  <button
+                    onClick={async () => {
+                      setAcoes(false);
+                      const nomeCli = c.contact.name || (c.contact.is_group ? "grupo" : formatPhone(c.contact.phone));
+                      const titulo = prompt("Tarefa ligada a esta conversa:", `Retornar para ${nomeCli}`);
+                      if (!titulo?.trim()) return;
+                      await api("/api/tarefas/cards", { method: "POST", body: JSON.stringify({ title: titulo, conversation_id: c.id, assignee: me?.id }) })
+                        .then(() => alert("Tarefa criada em Tarefas (primeira coluna do quadro)."))
+                        .catch((err) => alert(err.message));
+                    }}
+                  >📌 Criar tarefa desta conversa</button>
+                )}
                 {c.status !== "bot" && c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("bot"); }}>🤖 Devolver para a IA</button>}
                 {c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("closed"); }}>✅ Encerrar conversa</button>}
                 {c.status === "closed" && <button onClick={() => { setAcoes(false); onStatus("open"); }}>↩ Reabrir e assumir</button>}
