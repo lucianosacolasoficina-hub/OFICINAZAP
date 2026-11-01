@@ -704,7 +704,7 @@ function Avatar({ id, name, size = 40, foto }: { id: string; name: string; size?
       {initials(name)}
       {foto && ok && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className={`ib-foto${carregou ? " ok" : ""}`} src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onLoad={() => setCarregou(true)} onError={() => setOk(false)} />
+        <img className={`ib-foto${carregou ? " ok" : ""}`} src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" ref={(el) => { if (el && !carregou && el.complete && el.naturalWidth > 0) setCarregou(true); }} onLoad={() => setCarregou(true)} onError={() => setOk(false)} />
       )}
     </span>
   );
