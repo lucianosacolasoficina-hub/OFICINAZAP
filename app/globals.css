@@ -809,3 +809,7 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
   .cc.sem-lateral .cc-tg { right: -30px; }
   .cc.sem-lateral .cc-cols { padding-left: 40px; }
 }
+@media (min-width: 1000px) {
+  .nav .lado-tg.nav-tg { width: 26px !important; height: 26px !important; min-width: 0 !important; left: auto !important; right: -13px !important; margin: 0 !important; display: grid !important; place-items: center; gap: 0 !important; font-size: 18px !important; }
+  .nav.nav-oculto .lado-tg.nav-tg { right: -30px !important; }
+}
