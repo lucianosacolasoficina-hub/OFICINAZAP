@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, avatarColor, formatListTime, formatPhone, formatPreview, formatSince, initials } from "@/lib/client";
+import { api, formatListTime, formatPhone, formatPreview, formatSince } from "@/lib/client";
+import { FotoContato } from "@/components/FotoContato";
 
 // Central de atendimento: uma coluna para cada número de WhatsApp, lado a lado, atualizando sozinha.
 type Conn = { id: string; name: string; phone?: string | null; connected_at: string | null };
@@ -112,7 +113,7 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
           const late = espera && Date.now() - new Date(espera).getTime() > lateMin * 60_000;
           return (
             <button key={c.id} className={`cc-item${aberta === c.id ? " on" : ""}${c.unread_count ? " nova" : ""}`} onClick={() => onAbrir(c.id)}>
-              <span className="ib-avatar" style={{ background: avatarColor(c.contact.id), width: 36, height: 36, fontSize: 13 }}>{initials(nome)}</span>
+              <FotoContato id={c.contact.id} name={nome} phone={c.contact.phone} size={40} />
               <span className="cc-body">
                 <span className="cc-l1">
                   <b>{nome}</b>
