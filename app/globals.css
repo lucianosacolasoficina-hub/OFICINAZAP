@@ -788,3 +788,10 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
   .cc.cc-lat .cc-cols { padding-top: 12px; }
   .cc.cc-lat .cc-cols.grade { grid-auto-rows: max(420px, calc((100dvh - 40px) / 2)); }
 }
+/* Central: conversa aberta ao lado das caixas (PC) */
+.cc-dock { flex: 1 1 0; min-width: 460px; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -6px 0 18px rgba(0,0,0,.06); }
+.cc-dock iframe { flex: 1; width: 100%; border: 0; min-height: 0; }
+.cc.com-dock .cc-cols { flex: 0 1 auto; max-width: 52%; }
+.cc.com-dock .cc-cols:not(.grade) .cc-col { flex: 0 0 330px; }
+.cc.com-dock .cc-cols.grade { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); width: 52%; }
+.cc.com-dock .cc-side { width: 190px; }

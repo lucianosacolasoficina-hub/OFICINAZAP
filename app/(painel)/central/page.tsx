@@ -151,6 +151,23 @@ export default function CentralPage() {
     setCheia(v);
     try { localStorage.setItem("oz.centralCheia", v ? "1" : "0"); } catch {}
   };
+  // No PC a conversa abre ao lado das caixas, no espaço livre da tela (sem cobrir as caixas).
+  const [dock, setDock] = useState(true);
+  const [largo, setLargo] = useState(false);
+  useEffect(() => {
+    try { setDock(localStorage.getItem("oz.centralDock") !== "0"); } catch {}
+    const mq = window.matchMedia("(min-width: 1000px)");
+    const f = () => setLargo(mq.matches);
+    f();
+    mq.addEventListener("change", f);
+    return () => mq.removeEventListener("change", f);
+  }, []);
+  const mudarDock = (v: boolean) => {
+    setDock(v);
+    if (!v) mudarCheia(true);
+    try { localStorage.setItem("oz.centralDock", v ? "1" : "0"); } catch {}
+  };
+  const lado = !!aberta && dock && largo;
   useEffect(() => {
     try {
       const m = localStorage.getItem("oz.centralModo");
@@ -187,7 +204,7 @@ export default function CentralPage() {
   }, []);
 
   return (
-    <div className="cc cc-lat">
+    <div className={`cc cc-lat${lado ? " com-dock" : ""}`}>
       <aside className="cc-side">
       <div className="cc-top">
         <h1>Central de atendimento</h1>
@@ -232,14 +249,27 @@ export default function CentralPage() {
           <Coluna key={c.id} conn={c} stats={sum.numeros?.[c.id]} onAbrir={setAberta} aberta={aberta} lateMin={sum.alertas?.espera_min} max={maxId === c.id} onMax={() => setMaxId(maxId === c.id ? null : c.id)} />
         ))}
       </div>
-      {aberta && (
+      {lado && (
+        <section className="cc-dock" aria-label="Conversa aberta">
+          <div className="cc-dbar">
+            <button onClick={() => setAberta(null)}>× Fechar conversa</button>
+            <button className="cc-dmodo" onClick={() => mudarDock(false)} title="Abrir a conversa na tela toda">⤢ Tela toda</button>
+          </div>
+          <iframe key={aberta} src={`/?c=${aberta}&embed=1`} title="Conversa" />
+        </section>
+      )}
+      {aberta && !lado && (
         <div className="cc-drawer-bg" onClick={() => setAberta(null)}>
           <div className={`cc-drawer${cheia ? " cheia" : ""}`} onClick={(e) => e.stopPropagation()}>
             <div className="cc-dbar">
               <button onClick={() => setAberta(null)}>← Voltar para a Central</button>
-              <button className="cc-dmodo" onClick={() => mudarCheia(!cheia)} title={cheia ? "Abrir a conversa numa janela lateral" : "Abrir a conversa na tela toda, com as ferramentas"}>
-                {cheia ? "⤡ Janela lateral" : "⤢ Tela toda"}
-              </button>
+              {largo ? (
+                <button className="cc-dmodo" onClick={() => mudarDock(true)} title="Abrir a conversa ao lado das caixas">⇤ Abrir ao lado das caixas</button>
+              ) : (
+                <button className="cc-dmodo" onClick={() => mudarCheia(!cheia)} title={cheia ? "Abrir a conversa numa janela lateral" : "Abrir a conversa na tela toda"}>
+                  {cheia ? "⤡ Janela lateral" : "⤢ Tela toda"}
+                </button>
+              )}
             </div>
             <iframe key={aberta} src={`/?c=${aberta}&embed=1`} title="Conversa" />
           </div>
