@@ -1,4 +1,4 @@
-import { route } from "@/lib/api";
+import { HttpError, route } from "@/lib/api";
 import { emailUrl, getEmailConfig, saveEmailConfig } from "@/lib/email";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -14,6 +14,12 @@ export const GET = route(async () => {
 });
 
 export const PUT = route(async (req) => {
-  await saveEmailConfig((await req.json()) as { client_id?: string; client_secret?: string; tenant?: string });
+  const b = (await req.json()) as { client_id?: string; client_secret?: string; tenant?: string };
+  const sec = b.client_secret?.trim();
+  if (sec && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sec))
+    throw new HttpError(400, "isso é o ID secreto: copie a coluna Valor do segredo (não o ID)");
+  if (sec && !/^[A-Za-z0-9~._-]{30,60}$/.test(sec))
+    throw new HttpError(400, "essa não parece o Valor do segredo da Microsoft (cerca de 40 letras e números, com um ~ no meio): crie um segredo novo e copie a coluna Valor");
+  await saveEmailConfig(b);
   return { ok: true };
 });
