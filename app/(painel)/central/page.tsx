@@ -168,6 +168,15 @@ export default function CentralPage() {
     try { localStorage.setItem("oz.centralDock", v ? "1" : "0"); } catch {}
   };
   const lado = !!aberta && dock && largo;
+  // Barra lateral da Central pode ser escondida para sobrar mais espaço para as caixas e a conversa.
+  const [semLateral, setSemLateral] = useState(false);
+  useEffect(() => {
+    try { setSemLateral(localStorage.getItem("oz.centralSemLateral") === "1"); } catch {}
+  }, []);
+  const mudarLateral = (v: boolean) => {
+    setSemLateral(v);
+    try { localStorage.setItem("oz.centralSemLateral", v ? "1" : "0"); } catch {}
+  };
   useEffect(() => {
     try {
       const m = localStorage.getItem("oz.centralModo");
@@ -204,8 +213,15 @@ export default function CentralPage() {
   }, []);
 
   return (
-    <div className={`cc cc-lat${lado ? " com-dock" : ""}`}>
+    <div className={`cc cc-lat${lado ? " com-dock" : ""}${semLateral ? " sem-lateral" : ""}`}>
+      {semLateral && (
+        <button className="cc-side-abrir" onClick={() => mudarLateral(false)} title="Mostrar a barra com as caixas e opções">
+          <span aria-hidden="true">»</span>
+          <span className="cc-side-abrir-t">Caixas</span>
+        </button>
+      )}
       <aside className="cc-side">
+        <button className="cc-side-x" onClick={() => mudarLateral(true)} title="Esconder esta barra para ver melhor as conversas">« Esconder barra</button>
       <div className="cc-top">
         <h1>Central de atendimento</h1>
         <span className="muted">Uma caixa para cada número/canal · atualiza sozinha · clique numa conversa para responder</span>
