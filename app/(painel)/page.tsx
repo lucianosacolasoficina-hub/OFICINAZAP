@@ -703,7 +703,7 @@ function Avatar({ id, name, size = 40, foto }: { id: string; name: string; size?
       {initials(name)}
       {foto && ok && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onError={() => setOk(false)} />
+        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onLoad={(e) => e.currentTarget.classList.add("ok")} onError={() => setOk(false)} />
       )}
     </span>
   );

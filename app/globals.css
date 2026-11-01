@@ -770,3 +770,5 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .ib-chip { font-size: 12.5px; color: #3e4a55; background: #eef2f5; border-radius: 8px; padding: 3px 9px; gap: 4px; }
 .ib-right .ib-avatar { box-shadow: 0 0 0 2px #fff; }
 @media (min-width: 1200px) { .list { width: 380px; } }
+.ib-foto { opacity: 0; transition: opacity .25s; background: none; }
+.ib-foto.ok { opacity: 1; background: #fff; }
