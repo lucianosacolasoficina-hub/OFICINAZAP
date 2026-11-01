@@ -695,10 +695,16 @@ function Section({
   );
 }
 
-function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: number }) {
+function Avatar({ id, name, size = 40, foto }: { id: string; name: string; size?: number; foto?: boolean }) {
+  // Com "foto", tenta a foto de perfil do WhatsApp; sem foto (ou se falhar), ficam as iniciais.
+  const [ok, setOk] = useState(true);
   return (
     <span className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
       {initials(name)}
+      {foto && ok && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="ib-foto" src={`/api/contacts/${id}/avatar`} alt="" loading="lazy" onError={() => setOk(false)} />
+      )}
     </span>
   );
 }
@@ -780,21 +786,24 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
       onDragStart={arrastar ? (e) => { e.dataTransfer.setData("text/conv", c.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
       title={arrastar ? "Arraste para um atendente na barra lateral para direcionar" : undefined}
     >
-      <Avatar id={c.contact.id} name={name} />
+      <Avatar id={c.contact.id} name={name} size={46} foto={!/^(ig|fb|mail):/.test(String(c.contact.phone))} />
       <div className="ib-item-body">
         <div className="ib-line">
           <span className="name">{name}</span>
           <span className="time">{formatListTime(c.last_message_at)}</span>
           {c.unread_count > 0 && <span className="ib-unread">{c.unread_count > 99 ? "99+" : c.unread_count}</span>}
         </div>
-        <div className="preview">{formatPreview(c.last_message_preview) || " "}</div>
+        <div className="preview">
+          {c.last_from_me && <span className="ib-ck" aria-label="enviada por nós">✓✓</span>}
+          {formatPreview(c.last_message_preview) || " "}
+        </div>
         <div className="ib-line ib-tags">
           {mostrarNumero && c.connection ? (
             <span className="ib-num" title={`Chegou pelo número ${c.connection.name}`}>📱 {c.connection.name}</span>
           ) : null}
           {c.department ? (
-            <span className="ib-dept">
-              <span className="dot" style={{ background: c.department.color, width: 7, height: 7, marginRight: 4 }} />
+            <span className="ib-dept" title="Departamento">
+              <Icon name="columns" size={12} />
               {c.department.name}
             </span>
           ) : (
@@ -809,7 +818,8 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
             {waiting && (
               <span className={`ib-wait ${late ? "late" : ""}`} title="Tempo esperando resposta">
                 <Icon name="hourglass" size={12} />
-                {formatSince(waiting)}
+                <b>{formatSince(waiting)}</b>
+                {!c.agent && (c.department?.name ? ` ${c.department.name}` : "")}
               </span>
             )}
             {c.status === "bot" && (
@@ -825,7 +835,7 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
             )}
             {c.agent && (
               <span title={`Atendente: ${c.agent.name}${c.agent.id === me ? " (você)" : ""}`}>
-                <Avatar id={c.agent.id} name={c.agent.name} size={22} />
+                <Avatar id={c.agent.id} name={c.agent.name} size={26} />
               </span>
             )}
           </span>
@@ -1040,7 +1050,7 @@ function Chat({
           {onBack && (
             <button className="ch2-ic ch2-back" onClick={onBack} title="Voltar para a lista" aria-label="Voltar">←</button>
           )}
-          <Avatar id={c.contact.id} name={c.contact.name || c.contact.phone} size={38} />
+          <Avatar id={c.contact.id} name={c.contact.name || c.contact.phone} size={42} foto={!/^(ig|fb|mail):/.test(String(c.contact.phone))} />
           <div className="who">
             <strong>{c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone))}</strong>
             <div className="muted ch2-meta">

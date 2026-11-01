@@ -289,6 +289,14 @@ export class EvolutionProvider implements WhatsAppProvider {
     return status < 400 ? data.subject || null : null;
   }
 
+  /** Link da foto de perfil do contato ou do grupo (null quando não tem ou está oculta). */
+  async profilePicture(number: string): Promise<string | null> {
+    const { status, data } = await this.call<{ profilePictureUrl?: string | null }>("POST", `/chat/fetchProfilePictureUrl/${this.instance}`, { number });
+    if (status >= 400) return null;
+    const u = data?.profilePictureUrl;
+    return typeof u === "string" && /^https:\/\//.test(u) ? u : null;
+  }
+
   async sendText(phone: string, text: string) {
     const res = await fetch(`${this.baseUrl}/message/sendText/${this.instance}`, {
       method: "POST",
