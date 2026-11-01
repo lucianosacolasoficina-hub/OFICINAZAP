@@ -51,6 +51,6 @@ export async function GET(req: NextRequest) {
     return volta("ok");
   } catch (err) {
     console.error("Erro ao conectar Instagram", err);
-    return volta(`erro&msg=${encodeURIComponent((err as Error).message.slice(0, 200))}`);
+    return volta(`erro&msg=${encodeURIComponent((err as Error).message.slice(0, 400))}`);
   }
 }

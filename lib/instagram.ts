@@ -108,10 +108,7 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
   u.searchParams.set("code", code);
   const r = await jsonOuErro(await fetch(u, { cache: "no-store" }));
   const token = String(r.access_token);
-  const contas = await jsonOuErro(await fetch(`${FB_GRAPH}/me/assigned_instagram_accounts?fields=id,username&access_token=${encodeURIComponent(token)}`, { cache: "no-store" }));
-  const lista = (contas.data as { id: string; username?: string }[]) ?? [];
-  if (lista.length === 0) throw new Error("nenhuma conta do Instagram foi escolhida na autorização");
-  const conta = lista[0];
+  const conta = await acharContaInstagram(cfg, token);
   const me = await jsonOuErro(await fetch(`${FB_GRAPH}/${conta.id}?fields=id,username,name&access_token=${encodeURIComponent(token)}`)).catch(() => ({}) as Record<string, unknown>);
   return {
     token,
@@ -120,6 +117,43 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
     username: ((me.username as string) ?? conta.username) || null,
     name: (me.name as string) ?? null,
   };
+}
+
+/**
+ * Descobre qual conta do Instagram foi compartilhada na autorização.
+ * Tenta, em ordem: contas atribuídas ao token, os ids das permissões concedidas (debug_token)
+ * e as Páginas ligadas a uma conta do Instagram.
+ */
+async function acharContaInstagram(cfg: IgConfig, token: string): Promise<{ id: string; username?: string }> {
+  const t = encodeURIComponent(token);
+  const tentativas: string[] = [];
+  try {
+    const r = await jsonOuErro(await fetch(`${FB_GRAPH}/me/assigned_instagram_accounts?fields=id,username&access_token=${t}`, { cache: "no-store" }));
+    const l = (r.data as { id: string; username?: string }[]) ?? [];
+    if (l[0]) return l[0];
+    tentativas.push("atribuídas: 0");
+  } catch (e) {
+    tentativas.push(`atribuídas: ${(e as Error).message}`);
+  }
+  try {
+    const app = encodeURIComponent(`${cfg.app_id}|${cfg.app_secret}`);
+    const r = await jsonOuErro(await fetch(`${FB_GRAPH}/debug_token?input_token=${t}&access_token=${app}`, { cache: "no-store" }));
+    const scopes = ((r.data as { granular_scopes?: { scope: string; target_ids?: string[] }[] })?.granular_scopes ?? []);
+    const ig = scopes.find((s) => s.scope === "instagram_manage_messages" && s.target_ids?.length) ?? scopes.find((s) => s.scope.startsWith("instagram_") && s.target_ids?.length);
+    if (ig?.target_ids?.[0]) return { id: ig.target_ids[0] };
+    tentativas.push(`permissões: ${scopes.map((s) => `${s.scope}(${s.target_ids?.length ?? 0})`).join(" ") || "nenhuma"}`);
+  } catch (e) {
+    tentativas.push(`permissões: ${(e as Error).message}`);
+  }
+  try {
+    const r = await jsonOuErro(await fetch(`${FB_GRAPH}/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${t}`, { cache: "no-store" }));
+    const pg = ((r.data as { instagram_business_account?: { id: string; username?: string } }[]) ?? []).find((p) => p.instagram_business_account);
+    if (pg?.instagram_business_account) return pg.instagram_business_account;
+    tentativas.push("páginas: 0");
+  } catch (e) {
+    tentativas.push(`páginas: ${(e as Error).message}`);
+  }
+  throw new Error(`não achei a conta do Instagram na autorização (${tentativas.join("; ")})`.slice(0, 400));
 }
 
 /** Pede à Meta para mandar as mensagens do Direct desta conta para o nosso webhook. */
