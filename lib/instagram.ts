@@ -108,7 +108,14 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
   u.searchParams.set("code", code);
   const r = await jsonOuErro(await fetch(u, { cache: "no-store" }));
   const token = String(r.access_token);
-  const conta = await acharContaInstagram(cfg, token);
+  let conta: { id: string; username?: string };
+  try {
+    conta = await acharContaInstagram(cfg, token);
+  } catch (e) {
+    // Guarda o acesso para terminar a ligação depois (tela de diagnóstico do administrador).
+    await supabaseAdmin().from("instagram_config").update({ pending_token: token }).eq("id", 1);
+    throw e;
+  }
   const me = await jsonOuErro(await fetch(`${FB_GRAPH}/${conta.id}?fields=id,username,name&access_token=${encodeURIComponent(token)}`)).catch(() => ({}) as Record<string, unknown>);
   return {
     token,
@@ -165,6 +172,43 @@ export async function assinarWebhook(token: string, igUserId?: string) {
   }
   const campos = "messages,messaging_seen,messaging_postbacks,messaging_reactions,messaging_referrals";
   await jsonOuErro(await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=${campos}&access_token=${encodeURIComponent(token)}`, { method: "POST" }));
+}
+
+/** Cria (ou atualiza) a conexão Instagram no OficinaZap e guarda o token. */
+export async function gravarConexao(r: { token: string; igUserId: string; username: string | null; expiresAt: string | null }) {
+  const db = supabaseAdmin();
+  const instance = `ig:${r.igUserId}`;
+  const nome = `Instagram${r.username ? ` @${r.username}` : ""}`;
+  let { data: conn } = await db.from("whatsapp_connections").select("id").eq("instance", instance).maybeSingle();
+  if (conn) {
+    await db.from("whatsapp_connections").update({ name: nome, connected_at: new Date().toISOString() }).eq("id", conn.id);
+  } else {
+    const ins = await db
+      .from("whatsapp_connections")
+      .insert({ name: nome, instance, channel: "instagram", phone: null, connected_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    if (ins.error) throw new Error(ins.error.message);
+    conn = ins.data;
+  }
+  const up = await db.from("instagram_tokens").upsert({
+    connection_id: conn!.id,
+    ig_user_id: r.igUserId,
+    username: r.username,
+    access_token: r.token,
+    expires_at: r.expiresAt,
+    updated_at: new Date().toISOString(),
+  });
+  if (up.error) throw new Error(up.error.message);
+  return conn!.id as string;
+}
+
+/** Chamada GET na Graph API do Facebook com um token (usada no diagnóstico). */
+export async function graphGet(path: string, token: string) {
+  const u = new URL(`${FB_GRAPH}/${path.replace(/^\/+/, "")}`);
+  u.searchParams.set("access_token", token);
+  const res = await fetch(u, { cache: "no-store" });
+  return { status: res.status, body: (await res.json().catch(() => null)) as unknown };
 }
 
 export async function tokenDaConexao(connectionId: string): Promise<IgToken | null> {
