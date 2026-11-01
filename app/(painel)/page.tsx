@@ -124,6 +124,9 @@ export default function InboxPage() {
   const [numOcultos, setNumOcultos] = usePref<string[]>("numOcultos", []);
   const [numMin, setNumMin] = usePref("numMin", false);
   const [numCfg, setNumCfg] = useState(false);
+  // Quadros: a tela de conversas dividida em quadros, um por número/canal, sempre abertos.
+  const [quadros, setQuadros] = usePref("quadros", true);
+  const [quadroAberto, setQuadroAberto] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState("");
   const [teamOpen, setTeamOpen] = usePref("teamOpen", true);
   const [search, setSearch] = useState("");
@@ -321,6 +324,8 @@ export default function InboxPage() {
   }
 
   const extraFilters = (deptFilter ? 1 : 0) + (stage ? 1 : 0);
+  const visiveis = (summary?.connections ?? []).filter((n) => !numOcultos.includes(n.id));
+  const modoQuadros = quadros && !selected && !numero && visiveis.length > 1;
 
   return (
     <div className={`inbox inbox2${selected ? " tem-sel" : ""}`}>
@@ -398,9 +403,12 @@ export default function InboxPage() {
         </aside>
       )}
 
-      <aside className="list">
+      <aside className={`list${modoQuadros ? " list-quadros" : ""}`}>
         {(summary?.connections.length ?? 0) > 0 && (
           <div className="num-tabs" role="tablist" aria-label="Número de WhatsApp">
+            <button className={`num-cfg${quadros ? " on" : ""}`} onClick={() => { setQuadros(!quadros); setQuadroAberto(null); }} title={quadros ? "Voltar para a lista" : "Ver os números em quadros"}>
+              {quadros ? "☰ Lista" : "▦ Quadros"}
+            </button>
             <button className="num-cfg" onClick={() => setNumCfg(!numCfg)} title="Escolher o que aparece aqui" aria-expanded={numCfg}>
               ⚙
             </button>
@@ -551,6 +559,27 @@ export default function InboxPage() {
           )}
         </div>
 
+        {modoQuadros ? (
+          <div className={`quadros${quadroAberto ? " um" : ""}`}>
+            {visiveis
+              .filter((n) => !quadroAberto || n.id === quadroAberto)
+              .map((n) => (
+                <Quadro
+                  key={n.id}
+                  conn={n}
+                  stats={summary?.numeros?.[n.id]}
+                  params={params}
+                  query={query}
+                  aberto={quadroAberto === n.id}
+                  onExpandir={() => setQuadroAberto(quadroAberto === n.id ? null : n.id)}
+                  onAbrir={(id) => setSelected(id)}
+                  me={summary?.me}
+                  lateMin={lateMin}
+                  retomar={view === "retomar"}
+                />
+              ))}
+          </div>
+        ) : (
         <div className="items">
           {list === null && <p className="muted" style={{ padding: 16 }}>Carregando...</p>}
           {list?.length === 0 && (
@@ -560,6 +589,7 @@ export default function InboxPage() {
             <ConversationItem key={c.id} c={c} me={summary?.me} lateMin={lateMin} retomar={view === "retomar"} on={selected === c.id} onClick={() => setSelected(c.id)} arrastar={!!summary?.atendentes?.length} mostrarNumero={!numero && (summary?.connections.length ?? 0) > 1} />
           ))}
         </div>
+        )}
       </aside>
 
       {detail ? (
@@ -598,7 +628,7 @@ export default function InboxPage() {
         </>
       ) : selected ? (
         <div className="empty">Carregando...</div>
-      ) : (
+      ) : modoQuadros ? null : (
         <div className="empty">
           <div className="ib-empty">
               <Icon name="chat" size={72} />
@@ -660,6 +690,71 @@ function Avatar({ id, name, size = 40 }: { id: string; name: string; size?: numb
     <span className="ib-avatar" style={{ background: avatarColor(id), width: size, height: size, fontSize: size * 0.36 }}>
       {initials(name)}
     </span>
+  );
+}
+
+/** Um quadro da tela de conversas: as conversas de um número/canal, atualizando sozinho. */
+function Quadro({
+  conn,
+  stats,
+  params,
+  query,
+  aberto,
+  onExpandir,
+  onAbrir,
+  me,
+  lateMin,
+  retomar,
+}: {
+  conn: { id: string; name: string; phone?: string | null; connected_at: string | null };
+  stats?: NumStats;
+  params: URLSearchParams;
+  query: string;
+  aberto: boolean;
+  onExpandir: () => void;
+  onAbrir: (id: string) => void;
+  me?: string;
+  lateMin: number;
+  retomar: boolean;
+}) {
+  const [itens, setItens] = useState<ConvRow[] | null>(null);
+  const chave = `${params.toString()}|${query}|${conn.id}`;
+  useEffect(() => {
+    let vivo = true;
+    const carregar = () => {
+      const p = new URLSearchParams(params);
+      p.set("connection", conn.id);
+      if (query) p.set("q", query);
+      api<ConvRow[]>(`/api/conversations?${p}`)
+        .then((d) => vivo && setItens(d))
+        .catch(() => {});
+    };
+    setItens(null);
+    carregar();
+    const t = setInterval(carregar, 10000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave]);
+  return (
+    <section className={`quadro${aberto ? " aberto" : ""}`}>
+      <button className="quadro-head" onClick={onExpandir} title={aberto ? "Voltar aos quadros" : "Aumentar este quadro"}>
+        <span className={`num-dot ${conn.connected_at ? "ok" : "off"}`} />
+        <b>{conn.name}</b>
+        {stats && <span className="num-n">{stats.todas}</span>}
+        {stats && stats.pendentes > 0 && <span className="num-p" title="Aguardando resposta">{stats.pendentes}</span>}
+        <span className="quadro-exp">{aberto ? "⤡ diminuir" : "⤢"}</span>
+      </button>
+      <div className="quadro-items">
+        {itens === null && <p className="muted" style={{ padding: 12, margin: 0 }}>Carregando...</p>}
+        {itens?.length === 0 && <p className="muted" style={{ padding: 12, margin: 0 }}>Nenhuma conversa aqui.</p>}
+        {itens?.map((c) => (
+          <ConversationItem key={c.id} c={c} me={me} lateMin={lateMin} retomar={retomar} on={false} onClick={() => onAbrir(c.id)} />
+        ))}
+      </div>
+    </section>
   );
 }
 
