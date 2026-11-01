@@ -214,14 +214,18 @@ export default function CentralPage() {
 
   return (
     <div className={`cc cc-lat${lado ? " com-dock" : ""}${semLateral ? " sem-lateral" : ""}`}>
-      {semLateral && (
-        <button className="cc-side-abrir" onClick={() => mudarLateral(false)} title="Mostrar a barra com as caixas e opções">
-          <span aria-hidden="true">»</span>
-          <span className="cc-side-abrir-t">Caixas</span>
-        </button>
-      )}
+      <div className="cc-side-wrap">
+      <button
+        className="lado-tg cc-tg"
+        onClick={() => mudarLateral(!semLateral)}
+        title={semLateral ? "Mostrar a barra das caixas" : "Esconder a barra das caixas"}
+        aria-label={semLateral ? "Mostrar a barra das caixas" : "Esconder a barra das caixas"}
+        aria-expanded={!semLateral}
+      >
+        {semLateral ? "›" : "‹"}
+      </button>
       <aside className="cc-side">
-        <button className="cc-side-x" onClick={() => mudarLateral(true)} title="Esconder esta barra para ver melhor as conversas">« Esconder barra</button>
+
       <div className="cc-top">
         <h1>Central de atendimento</h1>
         <span className="muted">Uma caixa para cada número/canal · atualiza sozinha · clique numa conversa para responder</span>
@@ -259,6 +263,7 @@ export default function CentralPage() {
         </p>
       )}
       </aside>
+      </div>
       <div className={`cc-cols${modo === "grade" ? " grade" : ""}`}>
         {!sum && <p className="muted" style={{ padding: 16 }}>Carregando…</p>}
         {sum?.connections.filter((c) => !ocultos.includes(c.id)).map((c) => (

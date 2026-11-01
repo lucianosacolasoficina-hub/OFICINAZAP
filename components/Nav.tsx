@@ -38,17 +38,21 @@ export function Nav() {
     !perm || (me ? (perm === "admin" ? me.role === "admin" : me.perms[perm as keyof typeof me.perms]) : perm !== "admin");
   // Dentro da Central de atendimento a conversa abre numa janela sem o menu.
   if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("embed") === "1") return null;
-  if (oculto)
-    return (
-      <nav className="nav nav-oculto">
-        <button className="nav-mostrar" onClick={() => mudar(false)} title="Mostrar o menu" aria-label="Mostrar o menu">
-          <span aria-hidden="true">»</span>
-          <span className="nav-mostrar-t">Menu</span>
-        </button>
-      </nav>
-    );
+  const alternar = (
+    <button
+      className="lado-tg nav-tg"
+      onClick={() => mudar(!oculto)}
+      title={oculto ? "Mostrar o menu" : "Esconder o menu"}
+      aria-label={oculto ? "Mostrar o menu" : "Esconder o menu"}
+      aria-expanded={!oculto}
+    >
+      {oculto ? "›" : "‹"}
+    </button>
+  );
+  if (oculto) return <nav className="nav nav-oculto">{alternar}</nav>;
   return (
     <nav className="nav">
+      {alternar}
       <div className="logo">
         <span className="logo-m">OZ</span> <span className="label">OficinaZap</span>
       </div>
@@ -58,9 +62,6 @@ export function Nav() {
         </Link>
       ))}
       <div className="spacer" />
-      <button className="nav-esconder" onClick={() => mudar(true)} title="Esconder o menu para ver melhor as conversas" aria-label="Esconder o menu">
-        <span className="nav-esc-ic" aria-hidden="true">«</span> <span className="label">Esconder menu</span><span className="nav-s">Esconder</span>
-      </button>
       <form action="/api/auth/logout" method="post">
         <button title="Sair" aria-label="Sair">
           <Icon name="logout" size={22} /> <span className="label">Sair</span><span className="nav-s">Sair</span>
