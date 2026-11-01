@@ -673,3 +673,6 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .cc-dbar button:first-child { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
 .cc-dmodo { margin-left: auto; }
 .inbox.embed .ib-filters, .inbox.embed > .list { display: none !important; }
+.cc-stats span { cursor: pointer; transition: border-color .15s, background .15s; }
+.cc-stats span:hover { border-color: var(--brand); background: var(--brand-soft, #e7f6ee); }
+.cc-f button:hover:not(.on) { border-color: var(--brand); color: var(--brand); }

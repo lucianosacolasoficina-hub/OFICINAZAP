@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, avatarColor, formatListTime, formatPhone, formatPreview, formatSince, initials } from "@/lib/client";
 
 // Central de atendimento: uma coluna para cada número de WhatsApp, lado a lado, atualizando sozinha.
@@ -60,6 +60,18 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
   }, [carregar, q]);
 
   const online = !!conn.connected_at;
+  // Passar o mouse por um filtro (ou contador) já mostra a lista dele, sem precisar clicar.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const passar = (key: string) => ({
+    onMouseEnter: () => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setFiltro(key), 250);
+    },
+    onMouseLeave: () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    onClick: () => setFiltro(key),
+  });
   return (
     <section className={`cc-col${online ? "" : " off"}${max ? " max" : ""}`}>
       <header className="cc-h" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,input")) onMax?.(); }}>
@@ -76,15 +88,15 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
           )}
         </div>
         <div className="cc-stats">
-          <span className="w" title="Aguardando resposta"><b>{stats?.pendentes ?? "–"}</b>aguardando</span>
-          <span className="g" title="Em atendimento"><b>{stats?.abertas ?? "–"}</b>atendendo</span>
-          <span className="v" title="Com a IA"><b>{stats?.robo ?? "–"}</b>IA</span>
-          <span title="Conversas abertas"><b>{stats?.todas ?? "–"}</b>abertas</span>
+          <span className="w" title="Aguardando resposta" {...passar("pendentes")}><b>{stats?.pendentes ?? "–"}</b>aguardando</span>
+          <span className="g" title="Em atendimento" {...passar("todas")}><b>{stats?.abertas ?? "–"}</b>atendendo</span>
+          <span className="v" title="Com a IA" {...passar("robo")}><b>{stats?.robo ?? "–"}</b>IA</span>
+          <span title="Conversas abertas" {...passar("todas")}><b>{stats?.todas ?? "–"}</b>abertas</span>
         </div>
         {!online && <p className="cc-alerta">Desconectado: as mensagens deste número não estão chegando.</p>}
         <div className="cc-f">
           {FILTROS.map((f) => (
-            <button key={f.key} className={filtro === f.key ? "on" : ""} onClick={() => setFiltro(f.key)}>
+            <button key={f.key} className={filtro === f.key ? "on" : ""} {...passar(f.key)}>
               {f.label}
             </button>
           ))}
