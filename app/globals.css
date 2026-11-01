@@ -589,3 +589,12 @@ button.cc-item.nova b { font-weight: 800; }
 
 /* Campos de chave secreta: texto escondido sem ser "password", para o navegador não preencher com a senha do login. */
 input.segredo { -webkit-text-security: disc; font-family: monospace; }
+
+/* Barra de números: escolher o que aparece e minimizar */
+.num-tabs { position: relative; }
+.num-tabs .num-cfg { padding: 4px 8px; font-size: 13px; }
+.num-tabs .num-min { font-weight: 600; }
+.num-pop { position: absolute; top: 100%; left: 8px; z-index: 30; background: var(--panel, #fff); border: 1px solid var(--border, #ddd); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 240px; max-height: 60vh; overflow: auto; }
+.num-pop label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.num-pop hr { border: 0; border-top: 1px solid var(--border, #eee); margin: 4px 0; width: 100%; }
+.num-tabs { flex-wrap: wrap; overflow: visible; padding-bottom: 4px; }

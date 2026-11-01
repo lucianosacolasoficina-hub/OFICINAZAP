@@ -120,6 +120,10 @@ export default function InboxPage() {
   const [deptFilter, setDeptFilter] = useState("");
   const [agentFilter, setAgentFilter] = useState("");
   const [numero, setNumero] = usePref("numero", "");
+  // Quais números/canais aparecem na barra do topo (escolha de cada pessoa, guardada neste aparelho).
+  const [numOcultos, setNumOcultos] = usePref<string[]>("numOcultos", []);
+  const [numMin, setNumMin] = usePref("numMin", false);
+  const [numCfg, setNumCfg] = useState(false);
   const [dropOn, setDropOn] = useState("");
   const [teamOpen, setTeamOpen] = usePref("teamOpen", true);
   const [search, setSearch] = useState("");
@@ -397,10 +401,39 @@ export default function InboxPage() {
       <aside className="list">
         {(summary?.connections.length ?? 0) > 0 && (
           <div className="num-tabs" role="tablist" aria-label="Número de WhatsApp">
-            <button className={!numero ? "on" : ""} onClick={() => setNumero("")} title="Conversas de todos os números">
-              Todos os números
+            <button className="num-cfg" onClick={() => setNumCfg(!numCfg)} title="Escolher o que aparece aqui" aria-expanded={numCfg}>
+              ⚙
             </button>
-            {summary!.connections.map((n) => {
+            {numMin ? (
+              <button className="num-min" onClick={() => setNumMin(false)} title="Mostrar os números">
+                {numero ? summary!.connections.find((n) => n.id === numero)?.name ?? "Números" : "Todos os números"} ▸
+              </button>
+            ) : (
+              <button className={!numero ? "on" : ""} onClick={() => setNumero("")} title="Conversas de todos os números">
+                Todos os números
+              </button>
+            )}
+            {numCfg && (
+              <div className="num-pop" onMouseLeave={() => setNumCfg(false)}>
+                <b>Mostrar na tela principal</b>
+                {summary!.connections.map((n) => (
+                  <label key={n.id}>
+                    <input
+                      type="checkbox"
+                      checked={!numOcultos.includes(n.id)}
+                      onChange={(e) => setNumOcultos(e.target.checked ? numOcultos.filter((x) => x !== n.id) : [...numOcultos, n.id])}
+                    />
+                    <span className={`num-dot ${n.connected_at ? "ok" : "off"}`} /> {n.name}
+                  </label>
+                ))}
+                <hr />
+                <label>
+                  <input type="checkbox" checked={numMin} onChange={(e) => setNumMin(e.target.checked)} /> Minimizar a barra de números
+                </label>
+                <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>As conversas dos números escondidos continuam em &quot;Todos os números&quot;.</p>
+              </div>
+            )}
+            {!numMin && summary!.connections.filter((n) => !numOcultos.includes(n.id) || n.id === numero).map((n) => {
               const st = summary!.numeros?.[n.id];
               return (
                 <button key={n.id} className={numero === n.id ? "on" : ""} onClick={() => setNumero(numero === n.id ? "" : n.id)} title={`${n.name}${n.phone ? " · " + formatPhone(n.phone) : ""}${n.connected_at ? " · conectado" : " · DESCONECTADO"}`}>
