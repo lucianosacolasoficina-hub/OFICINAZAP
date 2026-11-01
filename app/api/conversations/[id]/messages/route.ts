@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsapp } from "@/lib/whatsapp";
 import { enviarTexto, IG_PREFIX } from "@/lib/instagram";
 import { enviarEmail, MAIL_PREFIX } from "@/lib/email";
+import { enviarMessenger, FB_PREFIX } from "@/lib/messenger";
 
 // Atendente envia uma mensagem. Ao responder, ele assume a conversa e a IA para de responder nela.
 export const POST = route<IdCtx>(async (req, { params }, userId) => {
@@ -26,6 +27,8 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
   const sent =
     conversation.connection?.channel === "instagram"
       ? await enviarTexto(conversation.connection.id, phone.slice(IG_PREFIX.length), text)
+      : conversation.connection?.channel === "messenger"
+      ? await enviarMessenger(conversation.connection.id, phone.slice(FB_PREFIX.length), text)
       : conversation.connection?.channel === "email"
       ? await enviarEmail(conversation.connection.id, phone.slice(MAIL_PREFIX.length), text, await threadIds(id))
       : await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text);

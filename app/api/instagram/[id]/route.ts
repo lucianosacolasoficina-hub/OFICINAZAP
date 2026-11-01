@@ -6,5 +6,5 @@ export const DELETE = route<IdCtx>(async (_req, { params }) => {
   const { id } = await params;
   const db = supabaseAdmin();
   await db.from("instagram_tokens").delete().eq("connection_id", id);
-  await db.from("whatsapp_connections").update({ connected_at: null }).eq("id", id).eq("channel", "instagram");
+  await db.from("whatsapp_connections").update({ connected_at: null }).eq("id", id).in("channel", ["instagram", "messenger"]);
 });

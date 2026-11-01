@@ -7,7 +7,7 @@ export const GET = route(async (req) => {
   const p = new URL(req.url).searchParams;
   const tel = p.get("telefone") ?? undefined;
   // Contato do Instagram não tem telefone: não procura por número.
-  const telefone = tel && !/^(ig|mail):/.test(tel) ? tel : undefined;
+  const telefone = tel && !/^(ig|fb|mail):/.test(tel) ? tel : undefined;
   const pedido = p.get("pedido") ?? undefined;
   if (!telefone && !pedido) return { ativo: true, cliente: null, pedidos: [] };
   const dados = await consultarGestao({ telefone, pedido, staff: true });

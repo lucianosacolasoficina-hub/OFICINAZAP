@@ -9,7 +9,7 @@ export const GET = route(async (req) => {
   const { data: contas } = await supabaseAdmin()
     .from("whatsapp_connections")
     .select("id, name, connected_at, tok:instagram_tokens(username, expires_at)")
-    .eq("channel", "instagram")
+    .in("channel", ["instagram", "messenger"])
     .order("created_at");
   return {
     app_id: cfg.app_id,

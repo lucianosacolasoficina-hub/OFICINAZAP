@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { assinaturaValida, getIgConfig } from "@/lib/instagram";
 import { processarInstagram } from "@/lib/instagramInbound";
+import { processarMessenger } from "@/lib/messengerInbound";
 
 export const maxDuration = 60;
 
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
   after(async () => {
     try {
       await processarInstagram(payload as Parameters<typeof processarInstagram>[0]);
+      await processarMessenger(payload as Parameters<typeof processarMessenger>[0]);
     } catch (err) {
       console.error("Erro ao processar mensagem do Instagram", err);
     }

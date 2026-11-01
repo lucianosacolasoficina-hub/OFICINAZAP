@@ -8,7 +8,7 @@ import { supabaseAdmin } from "./supabase/admin";
 // O app da Meta (App ID, config_id e chave secreta) e os tokens ficam em tabelas que só o servidor lê.
 
 const GRAPH = "https://graph.instagram.com/v23.0";
-const FB_GRAPH = "https://graph.facebook.com/v23.0";
+export const FB_GRAPH = "https://graph.facebook.com/v23.0";
 // Endereço fixo usado com a Meta (o redirecionamento precisa ser exatamente igual ao cadastrado no app).
 export const IG_BASE = process.env.IG_BASE_URL || "https://zap.sacolasoficina.com.br";
 export const igUrl = (path: string) => new URL(path, IG_BASE).toString();
@@ -131,6 +131,7 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
   return {
     token: usar,
     pageId: conta.pageId ?? null,
+    pageName: conta.pageName ?? null,
     expiresAt: conta.token ? null : r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000).toISOString() : null,
     igUserId: String(conta.id),
     username: ((me.username as string) ?? conta.username) || null,
@@ -143,7 +144,7 @@ async function trocarCodigoUnificado(cfg: IgConfig, code: string, redirectUri: s
  * Tenta, em ordem: contas atribuídas ao token, os ids das permissões concedidas (debug_token)
  * e as Páginas ligadas a uma conta do Instagram.
  */
-type ContaAchada = { id: string; username?: string; token?: string; pageId?: string };
+type ContaAchada = { id: string; username?: string; token?: string; pageId?: string; pageName?: string };
 async function acharContaInstagram(cfg: IgConfig, token: string): Promise<ContaAchada> {
   const t = encodeURIComponent(token);
   const tentativas: string[] = [];
@@ -171,7 +172,7 @@ async function acharContaInstagram(cfg: IgConfig, token: string): Promise<ContaA
     const r = await jsonOuErro(await fetch(`${FB_GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${t}`, { cache: "no-store" }));
     const pgs = (r.data as { id: string; name?: string; access_token?: string; instagram_business_account?: { id: string; username?: string } }[]) ?? [];
     const pg = pgs.find((p) => p.instagram_business_account);
-    if (pg?.instagram_business_account) return { ...pg.instagram_business_account, token: pg.access_token, pageId: pg.id };
+    if (pg?.instagram_business_account) return { ...pg.instagram_business_account, token: pg.access_token, pageId: pg.id, pageName: pg.name };
     tentativas.push(`páginas: ${pgs.length} sem Instagram ligado${pgs.length ? ` (${pgs.map((p) => p.name).join(", ").slice(0, 120)})` : ""}`);
   } catch (e) {
     tentativas.push(`páginas: ${(e as Error).message}`);

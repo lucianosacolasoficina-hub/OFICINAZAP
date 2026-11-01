@@ -71,7 +71,7 @@ export async function deleteConnection(id: string) {
  */
 export async function syncState(conn: Connection): Promise<Connection & { state: string }> {
   // Instagram não passa pela Evolution: está conectado enquanto tiver o token guardado.
-  if (conn.channel === "instagram" || conn.channel === "email") return { ...conn, state: conn.connected_at ? "open" : "close" };
+  if (conn.channel === "instagram" || conn.channel === "messenger" || conn.channel === "email") return { ...conn, state: conn.connected_at ? "open" : "close" };
   const evolution = new EvolutionProvider(conn.instance);
   let state: string;
   try {

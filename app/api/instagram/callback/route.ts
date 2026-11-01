@@ -3,6 +3,7 @@ import { currentUser } from "@/lib/supabase/server";
 import { getAgent } from "@/lib/perms";
 import { assinarWebhook, getIgConfig, gravarConexao, trocarCodigo, igUrl } from "@/lib/instagram";
 import { publicUrl } from "@/lib/origin";
+import { gravarConexaoMessenger } from "@/lib/messenger";
 
 // Volta da autorização do Instagram: guarda o token e cria a "conexão" Instagram no OficinaZap.
 export async function GET(req: NextRequest) {
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest) {
     const cfg = await getIgConfig();
     const r = await trocarCodigo(cfg, code, igUrl("/api/instagram/callback"));
     await gravarConexao(r);
+    // A mesma autorização dá acesso ao Messenger da Página: cria também a conexão "Facebook".
+    if ("pageId" in r && r.pageId) {
+      await gravarConexaoMessenger({ token: r.token, pageId: r.pageId, pageName: "pageName" in r ? r.pageName : null }).catch((e) => console.error("Messenger", e));
+    }
     try {
       await assinarWebhook(r.token, r.igUserId, "pageId" in r ? r.pageId : null);
     } catch (e) {
