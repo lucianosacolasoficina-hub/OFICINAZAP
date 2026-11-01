@@ -15,7 +15,7 @@ const LINKS: { href: string; label: string; short: string; icon: string; perm?: 
   { href: "/contatos", label: "Contatos", short: "Contatos", icon: "users" },
   { href: "/orcamentos", label: "Orçamentos", short: "Orçamentos", icon: "doc" },
   { href: "/departamentos", label: "Departamentos", short: "Deptos.", icon: "building", perm: "departamentos" },
-  { href: "/whatsapp", label: "WhatsApp", short: "WhatsApp", icon: "phone", perm: "whatsapp" },
+  { href: "/whatsapp", label: "Conexões: WhatsApp, Instagram e e-mail", short: "Conexões", icon: "phone", perm: "whatsapp" },
   { href: "/configuracoes", label: "Configurações", short: "Ajustes", icon: "gear", perm: "configuracoes" },
   { href: "/atendimentos", label: "Atendimentos", short: "Relatório", icon: "trend", perm: "admin" },
   { href: "/equipe", label: "Equipe", short: "Equipe", icon: "lock", perm: "admin" },

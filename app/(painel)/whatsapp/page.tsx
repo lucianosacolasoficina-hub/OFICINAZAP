@@ -328,10 +328,32 @@ export default function WhatsAppPage() {
     <div className="page">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 style={{ marginBottom: 4 }}>WhatsApp QR Code</h1>
-          <p className="muted" style={{ marginTop: 0 }}>Conecte os números da empresa via QR Code para atender pelo OficinaZap.</p>
+          <h1 style={{ marginBottom: 4 }}>Conexões</h1>
+          <p className="muted" style={{ marginTop: 0 }}>Ligue aqui os números de WhatsApp, o Instagram/Facebook e os e-mails da equipe.</p>
         </div>
-        <button className="primary" disabled={full} onClick={() => setEditing("new")}>+ Conectar novo</button>
+      </div>
+
+      <div className="conex-acoes">
+        <button className="conex-btn" disabled={full} onClick={() => setEditing("new")}>
+          <span className="conex-ic">📱</span>
+          <b>Novo número de WhatsApp</b>
+          <small>{full ? "limite de números atingido" : "ler o QR Code no celular"}</small>
+        </button>
+        <a className="conex-btn" href="/api/gmail/connect">
+          <span className="conex-ic">📨</span>
+          <b>E-mail Gmail</b>
+          <small>Conectar com Google</small>
+        </a>
+        <a className="conex-btn" href="/api/instagram/connect">
+          <span className="conex-ic">📸</span>
+          <b>Instagram e Facebook</b>
+          <small>Direct e Messenger da Página</small>
+        </a>
+        <a className="conex-btn" href="/api/email/connect">
+          <span className="conex-ic">📧</span>
+          <b>E-mail Outlook</b>
+          <small>Hotmail / Outlook</small>
+        </a>
       </div>
 
       <div className="row" style={{ justifyContent: "space-between", margin: "8px 0 16px" }}>
