@@ -29,6 +29,8 @@ export const PUT = route(async (req) => {
   const b = (await req.json()) as { app_id?: string; app_secret?: string; config_id?: string };
   if (b.app_id !== undefined && b.app_id.trim() && !/^\d{6,20}$/.test(b.app_id.trim())) throw new HttpError(400, "o ID do app tem só números");
   if (b.config_id !== undefined && b.config_id.trim() && !/^\d{6,25}$/.test(b.config_id.trim())) throw new HttpError(400, "o ID da configuração tem só números");
+  if (b.app_secret?.trim() && !/^[0-9a-f]{32}$/i.test(b.app_secret.trim()))
+    throw new HttpError(400, "essa não parece a Chave Secreta do Aplicativo: ela tem 32 letras e números (clique em Mostrar na Meta e copie tudo)");
   await saveIgConfig(b);
   return { ok: true };
 });
