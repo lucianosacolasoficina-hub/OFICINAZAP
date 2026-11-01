@@ -10,7 +10,10 @@ import { guardarEmail, type Anexos, type GMsg } from "./email";
 export type ImapConta = {
   connection_id: string;
   address: string;
-  password: string;
+  password: string | null;
+  refresh_token?: string | null;
+  access_token?: string | null;
+  expires_at?: string | null;
   imap_host: string;
   smtp_host: string;
   uid_inbox: number | null;
@@ -25,13 +28,62 @@ const MAX_POR_VEZ = 200;
 /** Gmail mostra a senha de app em 4 blocos ("abcd efgh ijkl mnop"): tira os espaços. */
 export const limparSenhaApp = (s: string) => s.replace(/\s+/g, "");
 
-function cliente(c: Pick<ImapConta, "address" | "password" | "imap_host">) {
-  return new ImapFlow({ host: c.imap_host, port: 993, secure: true, auth: { user: c.address, pass: c.password }, logger: false });
+// ---- "Conectar com Google" (OAuth): o app do Google fica em gmail_config; cada conta guarda o refresh_token.
+export type GmailConfig = { client_id: string | null; client_secret: string | null };
+export const GMAIL_SCOPES = ["https://mail.google.com/", "openid", "email", "profile"];
+
+export async function getGmailConfig(): Promise<GmailConfig> {
+  const { data } = await supabaseAdmin().from("gmail_config").select("client_id, client_secret").eq("id", 1).maybeSingle();
+  return (data as GmailConfig) ?? { client_id: null, client_secret: null };
+}
+
+async function tokenGoogle(form: Record<string, string>) {
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(form),
+  });
+  const j = (await r.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; id_token?: string; error?: string; error_description?: string };
+  if (!r.ok || !j.access_token) throw new Error(`Google: ${j.error_description ?? j.error ?? r.status}`);
+  return j;
+}
+
+export async function trocarCodigoGoogle(code: string, redirectUri: string) {
+  const cfg = await getGmailConfig();
+  const j = await tokenGoogle({ client_id: cfg.client_id ?? "", client_secret: cfg.client_secret ?? "", code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+  const info = (await (await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${j.access_token}` } })).json()) as { email?: string; name?: string };
+  if (!info.email) throw new Error("não consegui ler o e-mail da conta Google");
+  return {
+    address: info.email.toLowerCase(),
+    name: info.name ?? null,
+    access_token: j.access_token!,
+    refresh_token: j.refresh_token ?? null,
+    expires_at: new Date(Date.now() + (j.expires_in ?? 3600) * 1000 - 60000).toISOString(),
+  };
+}
+
+/** Token de acesso válido da conta (renova pelo refresh_token quando vence). */
+async function acessoGoogle(c: ImapConta): Promise<string> {
+  if (c.access_token && c.expires_at && new Date(c.expires_at).getTime() > Date.now()) return c.access_token;
+  const cfg = await getGmailConfig();
+  const j = await tokenGoogle({ client_id: cfg.client_id ?? "", client_secret: cfg.client_secret ?? "", refresh_token: c.refresh_token ?? "", grant_type: "refresh_token" });
+  c.access_token = j.access_token!;
+  c.expires_at = new Date(Date.now() + (j.expires_in ?? 3600) * 1000 - 60000).toISOString();
+  await supabaseAdmin().from("email_imap").update({ access_token: c.access_token, expires_at: c.expires_at }).eq("connection_id", c.connection_id);
+  return c.access_token;
+}
+
+async function credenciais(c: ImapConta): Promise<{ user: string; pass?: string; accessToken?: string }> {
+  return c.refresh_token ? { user: c.address, accessToken: await acessoGoogle(c) } : { user: c.address, pass: c.password ?? "" };
+}
+
+function cliente(c: Pick<ImapConta, "imap_host">, auth: { user: string; pass?: string; accessToken?: string }) {
+  return new ImapFlow({ host: c.imap_host, port: 993, secure: true, auth: auth as { user: string; pass: string }, logger: false });
 }
 
 /** Confere usuário e senha de app antes de salvar. */
-export async function testarLogin(c: Pick<ImapConta, "address" | "password" | "imap_host">) {
-  const cl = cliente(c);
+export async function testarLogin(c: { address: string; password: string; imap_host: string }) {
+  const cl = cliente(c, { user: c.address, pass: c.password });
   try {
     await cl.connect();
   } catch (e) {
@@ -86,7 +138,7 @@ export async function sincronizarImap(connectionId: string) {
   const c = data as ImapConta;
   const { data: conn } = await db.from("whatsapp_connections").select("id, department_id").eq("id", connectionId).maybeSingle();
   if (!conn) return { novos: 0 };
-  const cl = cliente(c);
+  const cl = cliente(c, await credenciais(c));
   let novos = 0;
   try {
     await cl.connect();
@@ -175,7 +227,13 @@ export async function enviarImap(c: ImapConta, para: string, texto: string, conv
     .maybeSingle();
   const assuntoAnt = ult?.body?.match(/^✉️ (.+)/)?.[1]?.trim();
   const refId = ult?.wa_message_id?.slice(5);
-  const transp = nodemailer.createTransport({ host: c.smtp_host, port: 465, secure: true, auth: { user: c.address, pass: c.password } });
+  const cred = await credenciais(c);
+  const transp = nodemailer.createTransport({
+    host: c.smtp_host,
+    port: 465,
+    secure: true,
+    auth: cred.accessToken ? { type: "OAuth2", user: c.address, accessToken: cred.accessToken } : { user: c.address, pass: cred.pass },
+  });
   const info = await transp.sendMail({
     from: c.address,
     to: para,
