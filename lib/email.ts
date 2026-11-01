@@ -133,7 +133,27 @@ async function guardar(t: Tok, conn: { id: string; department_id: string | null 
   const addr = outro?.address?.toLowerCase();
   if (!addr || addr === t.address) return;
   const contato = await upsertContact(MAIL_PREFIX + addr, outro?.name && outro.name !== outro.address ? outro.name : addr);
-  const conversa = await activeConversation(contato.id, false, conn);
+  const quando0 = m.receivedDateTime ?? m.sentDateTime ?? new Date().toISOString();
+  const antigo0 = Date.now() - new Date(quando0).getTime() > 2 * 864e5;
+  // Usa a conversa mais recente desse remetente nesta caixa (mesmo encerrada); e-mail novo do cliente reabre.
+  const { data: ex } = await db
+    .from("conversations")
+    .select("*")
+    .eq("contact_id", contato.id)
+    .eq("connection_id", conn.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let conversa = ex as { id: string; status: string } | null;
+  if (conversa && conversa.status === "closed" && !deMim && !antigo0) {
+    await db.from("conversations").update({ status: "waiting" }).eq("id", conversa.id);
+  }
+  if (!conversa) {
+    conversa = antigo0
+      ? (await db.from("conversations").insert({ contact_id: contato.id, connection_id: conn.id, department_id: conn.department_id, status: "closed" }).select("*").single()).data
+      : await activeConversation(contato.id, false, conn);
+  }
+  if (!conversa) return;
   const texto = `✉️ ${m.subject?.trim() || "(sem assunto)"}\n\n${limpar(m.body?.content ?? m.bodyPreview ?? "")}`;
   const salvo = await addMessage(conversa.id, {
     direction: deMim ? "out" : "in",
@@ -153,7 +173,7 @@ async function guardar(t: Tok, conn: { id: string; department_id: string | null 
       .from("conversations")
       .update({
         last_message_at: mx?.created_at ?? quando,
-        ...(antigo ? { waiting_since: null, unread_count: 0, ...(conversa.status === "waiting" ? { status: "closed" } : {}) } : {}),
+        ...(antigo ? { waiting_since: null, unread_count: 0 } : {}),
       })
       .eq("id", conversa.id);
   }
