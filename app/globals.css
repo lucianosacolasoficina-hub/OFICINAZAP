@@ -814,3 +814,8 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
   .nav.nav-oculto .lado-tg.nav-tg { right: -30px !important; }
 }
 .gsync-h { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; } .gsync-ok { color: #15803d; font-weight: 600; font-size: 13px; } a.btn { display: inline-flex; align-items: center; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); text-decoration: none; color: inherit; font-weight: 600; } a.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+/* botão de respostas prontas no campo de mensagem */
+.composer .qr-btn{flex:none;width:42px;height:42px;border-radius:12px;border:1.5px solid var(--line, #d7dbe3);background:#fff7ed;font-size:20px;cursor:pointer;align-self:flex-end}
+.composer .qr-btn:hover{background:#ffedd5;border-color:#fdba74}
+.qr-pop{max-height:340px;overflow:auto}

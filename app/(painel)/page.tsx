@@ -1037,7 +1037,7 @@ function Chat({
   const qrMatches = useMemo(() => {
     if (!text.startsWith("/")) return [];
     const q = text.slice(1).toLowerCase();
-    return quickReplies.filter((r) => r.shortcut.includes(q) || r.body.toLowerCase().includes(q)).slice(0, 8);
+    return quickReplies.filter((r) => r.shortcut.includes(q) || r.body.toLowerCase().includes(q)).slice(0, q ? 8 : 30);
   }, [text, quickReplies]);
 
   async function send() {
@@ -1400,6 +1400,18 @@ function Chat({
               ))}
             </div>
           )}
+          <button
+            type="button"
+            className="qr-btn"
+            title="Respostas prontas de venda (ou digite /)"
+            aria-label="Respostas prontas"
+            onClick={() => {
+              setText(text.startsWith("/") ? "" : "/");
+              setQrIndex(0);
+            }}
+          >
+            ⚡
+          </button>
           <textarea
             value={text}
             placeholder={c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
