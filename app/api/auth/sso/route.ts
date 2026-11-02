@@ -15,6 +15,8 @@ export async function POST(req: Request) {
   const form = await req.formData().catch(() => null);
   const token = String(form?.get("token") ?? "");
   const v = String(form?.get("v") ?? "").replace(/[^a-z]/g, "").slice(0, 20);
+  const tel = String(form?.get("tel") ?? "").replace(/\D/g, "").slice(0, 15);
+  const nome = String(form?.get("nome") ?? "").slice(0, 80);
   if (!token) return volta(req, "sessao");
 
   const r = await fetch(`${url.replace(/\/+$/, "")}/auth/v1/user`, {
@@ -38,5 +40,6 @@ export async function POST(req: Request) {
   const supabase = await supabaseServer();
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (e2) return volta(req, "indisponivel");
-  return NextResponse.redirect(publicUrl(req, v ? `/?v=${v}` : "/"), { status: 303 });
+  const destino = tel ? `/abrir?${new URLSearchParams({ tel, nome })}` : v ? `/?v=${v}` : "/";
+  return NextResponse.redirect(publicUrl(req, destino), { status: 303 });
 }

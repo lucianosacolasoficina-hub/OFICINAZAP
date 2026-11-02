@@ -142,6 +142,7 @@ export default function InboxPage() {
   const [queueOpen, setQueueOpen] = usePref("queueOpen", true);
   const [filterPop, setFilterPop] = useState(false);
   const [newChat, setNewChat] = useState(false);
+  const [novoIni, setNovoIni] = useState<{ phone: string; name: string } | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [list, setList] = useState<ConvRow[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -153,6 +154,13 @@ export default function InboxPage() {
     // Atalho vindo do sistema de gestão: /?v=pendentes abre direto nessa lista.
     const v = new URLSearchParams(window.location.search).get("v");
     if (v && VIEWS.some((x) => x.key === v)) setView(v);
+    // Vindo da agenda do sistema de gestão sem conversa ainda: abre "Nova conversa" com o número.
+    const qs = new URLSearchParams(window.location.search);
+    const novo = qs.get("novo");
+    if (novo) {
+      setNovoIni({ phone: novo, name: qs.get("nome") ?? "" });
+      setNewChat(true);
+    }
   }, []);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
@@ -659,6 +667,7 @@ export default function InboxPage() {
 
       {newChat && (
         <NewChatModal
+          inicial={novoIni}
           connections={summary?.connections ?? []}
           onClose={() => setNewChat(false)}
           onCreated={async (id) => {
@@ -862,16 +871,18 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
 }
 
 function NewChatModal({
+  inicial,
   connections,
   onClose,
   onCreated,
 }: {
+  inicial?: { phone: string; name: string } | null;
   connections: Summary["connections"];
   onClose: () => void;
   onCreated: (id: string) => Promise<void>;
 }) {
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
+  const [phone, setPhone] = useState(inicial?.phone ?? "");
+  const [name, setName] = useState(inicial?.name ?? "");
   const [connectionId, setConnectionId] = useState(connections.find((c) => c.connected_at)?.id ?? connections[0]?.id ?? "");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
