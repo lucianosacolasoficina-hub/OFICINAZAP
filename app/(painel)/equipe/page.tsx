@@ -9,6 +9,13 @@ type Row = { id: string; name: string; email: string; role: "admin" | "agent"; p
 type Canal = { id: string; name: string; channel: string | null; phone: string | null };
 type Draft = { id?: string; name: string; email: string; password: string; role: "admin" | "agent"; permissions: Record<string, boolean>; active: boolean; canais: string[] | null };
 
+function gerarSenha() {
+  const letras = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const buf = new Uint32Array(10);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => letras[n % letras.length]).join("");
+}
+
 export default function TeamPage() {
   const me = useMe();
   const [rows, setRows] = useState<Row[]>([]);
@@ -65,6 +72,11 @@ export default function TeamPage() {
     }
   }
 
+  const senhaCurta = !!draft && draft.password.length > 0 && draft.password.length < 8;
+  const podeSalvar =
+    !!draft && draft.name.trim() !== "" && (draft.id ? !senhaCurta : draft.email.trim() !== "" && draft.password.length >= 8);
+  const todasMarcadas = !!draft && perms.length > 0 && perms.every((p) => draft.permissions[p.key]);
+
   if (me && me.role !== "admin") {
     return (
       <div className="page">
@@ -116,64 +128,124 @@ export default function TeamPage() {
 
       {draft && (
         <div className="modal-bg" onClick={() => setDraft(null)}>
-          <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
-            <strong>{draft.id ? `Editar ${draft.name}` : "Novo atendente"}</strong>
-            <label>Nome<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
-            {!draft.id && <label>E-mail (login)<input type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></label>}
-            <label>
-              {draft.id ? "Nova senha (deixe em branco para não trocar)" : "Senha inicial (mínimo 8 caracteres)"}
-              <input type="text" autoComplete="new-password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
-            </label>
-            <label>
-              Papel
-              <select value={draft.role} disabled={draft.id === me?.id} onChange={(e) => setDraft({ ...draft, role: e.target.value as Draft["role"] })}>
-                <option value="agent">Atendente: só o que estiver marcado abaixo</option>
-                <option value="admin">Administrador: pode tudo e gerencia a equipe</option>
-              </select>
-            </label>
-            {draft.role === "agent" && (
-              <div className="eq-perms">
-                {perms.map((p) => (
-                  <label key={p.key} className="eq-perm">
-                    <input
-                      type="checkbox"
-                      checked={!!draft.permissions[p.key]}
-                      onChange={(e) => setDraft({ ...draft, permissions: { ...draft.permissions, [p.key]: e.target.checked } })}
-                    />
-                    <span><b>{p.label}</b><br /><small className="muted">{p.desc}</small></span>
-                  </label>
-                ))}
+          <div className="modal eq-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="eq-head">
+              <div>
+                <strong>{draft.id ? `Editar ${draft.name}` : "Novo atendente"}</strong>
+                <small className="muted">{draft.id ? draft.email : "Preencha os dados de acesso e escolha o que ele pode fazer."}</small>
               </div>
-            )}
-            {draft.role === "agent" && canais.length > 0 && (
-              <div className="eq-canais">
-                <b>Canais que este atendente vê</b>
-                <small className="muted">Marque o número/e-mail dele e, se quiser, os de outros atendentes. Ele vê as conversas desses canais e as que forem passadas para ele.{draft.permissions.ver_todas ? " (Com “Acesso total” ligado ele vê todos os canais.)" : ""}</small>
-                {canais.map((c) => (
-                  <label key={c.id} className="eq-perm">
-                    <input
-                      type="checkbox"
-                      checked={!!draft.canais?.includes(c.id)}
-                      onChange={(e) => {
-                        const atual = draft.canais ?? [];
-                        setDraft({ ...draft, canais: e.target.checked ? [...atual, c.id] : atual.filter((x) => x !== c.id) });
-                      }}
-                    />
-                    <span>{icone(c)} <b>{c.name}</b>{c.phone ? <small className="muted"> · {c.phone}</small> : null}</span>
+              <button className="eq-x" onClick={() => setDraft(null)} aria-label="Fechar">✕</button>
+            </div>
+
+            <div className="eq-body">
+              <section className="eq-sec">
+                <h3>1. Dados de acesso</h3>
+                <div className="eq-grid">
+                  <label>
+                    Nome
+                    <input autoFocus placeholder="Ex.: Maria Souza" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
                   </label>
-                ))}
+                  {!draft.id && (
+                    <label>
+                      E-mail (usado para entrar)
+                      <input type="email" placeholder="maria@empresa.com" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+                    </label>
+                  )}
+                  <label className="eq-full">
+                    {draft.id ? "Nova senha (deixe em branco para manter a atual)" : "Senha inicial"}
+                    <div className="eq-senha">
+                      <input type="text" autoComplete="new-password" placeholder="Mínimo 8 caracteres" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
+                      <button type="button" onClick={() => setDraft({ ...draft, password: gerarSenha() })}>Gerar senha</button>
+                    </div>
+                    {senhaCurta && <small className="eq-aviso">A senha precisa ter pelo menos 8 caracteres.</small>}
+                  </label>
+                </div>
+              </section>
+
+              <section className="eq-sec">
+                <h3>2. Tipo de acesso</h3>
+                <div className="eq-papeis">
+                  {(
+                    [
+                      ["agent", "Atendente", "Só faz o que você marcar abaixo"],
+                      ["admin", "Administrador", "Pode tudo e gerencia a equipe"],
+                    ] as const
+                  ).map(([v, t, d]) => (
+                    <label key={v} className={`eq-papel${draft.role === v ? " on" : ""}`}>
+                      <input type="radio" name="papel" checked={draft.role === v} disabled={draft.id === me?.id} onChange={() => setDraft({ ...draft, role: v })} />
+                      <span><b>{t}</b><small className="muted">{d}</small></span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              {draft.role === "agent" && (
+                <section className="eq-sec">
+                  <div className="eq-sec-h">
+                    <h3>3. O que ele pode fazer</h3>
+                    <button type="button" className="eq-link" onClick={() => setDraft({ ...draft, permissions: Object.fromEntries(perms.map((p) => [p.key, !todasMarcadas])) })}>
+                      {todasMarcadas ? "Desmarcar todas" : "Marcar todas"}
+                    </button>
+                  </div>
+                  <div className="eq-perms">
+                    {perms.map((p) => (
+                      <label key={p.key} className={`eq-perm${draft.permissions[p.key] ? " on" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={!!draft.permissions[p.key]}
+                          onChange={(e) => setDraft({ ...draft, permissions: { ...draft.permissions, [p.key]: e.target.checked } })}
+                        />
+                        <span><b>{p.label}</b><small className="muted">{p.desc}</small></span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {draft.role === "agent" && canais.length > 0 && (
+                <section className="eq-sec">
+                  <h3>4. Canais que ele vê</h3>
+                  <small className="muted">
+                    Marque o número/e-mail dele e, se quiser, os de outros atendentes. Ele vê as conversas desses canais e as que forem passadas para ele.
+                    {draft.permissions.ver_todas ? " Com “Acesso total às conversas” ligado ele já vê todos os canais." : ""}
+                  </small>
+                  <div className="eq-canais">
+                    {canais.map((c) => (
+                      <label key={c.id} className={`eq-perm${draft.canais?.includes(c.id) ? " on" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={!!draft.canais?.includes(c.id)}
+                          onChange={(e) => {
+                            const atual = draft.canais ?? [];
+                            setDraft({ ...draft, canais: e.target.checked ? [...atual, c.id] : atual.filter((x) => x !== c.id) });
+                          }}
+                        />
+                        <span><b>{icone(c)} {c.name}</b>{c.phone ? <small className="muted">{c.phone}</small> : null}</span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {draft.id && draft.id !== me?.id && (
+                <section className="eq-sec">
+                  <h3>Situação</h3>
+                  <label className={`eq-perm${draft.active ? " on" : ""}`}>
+                    <input type="checkbox" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} />
+                    <span><b>Acesso ativo</b><small className="muted">Desmarque para bloquear a entrada deste atendente sem apagar as conversas dele</small></span>
+                  </label>
+                </section>
+              )}
+            </div>
+
+            <div className="eq-foot">
+              {error && <div className="eq-erro">{error}</div>}
+              <div className="eq-foot-btns">
+                <button onClick={() => setDraft(null)}>Cancelar</button>
+                <button className="primary" onClick={salvar} disabled={saving || !podeSalvar}>
+                  {saving ? "Salvando…" : draft.id ? "Salvar alterações" : "Cadastrar atendente"}
+                </button>
               </div>
-            )}
-            {draft.id && draft.id !== me?.id && (
-              <label className="eq-perm">
-                <input type="checkbox" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} />
-                <span><b>Acesso ativo</b><br /><small className="muted">Desmarque para bloquear a entrada deste atendente</small></span>
-              </label>
-            )}
-            {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setDraft(null)}>Cancelar</button>
-              <button className="primary" onClick={salvar} disabled={saving}>{saving ? "Salvando…" : "Salvar"}</button>
             </div>
           </div>
         </div>
