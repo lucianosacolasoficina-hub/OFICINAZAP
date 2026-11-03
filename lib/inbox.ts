@@ -30,6 +30,8 @@ type Lookups = {
   stageContacts: Map<string, string[]>;
   searchContacts: string[] | null;
   restrito?: boolean;
+  /** Canais liberados para o atendente (null = regra por departamento). */
+  canais?: string[] | null;
   /** Cliente esperando desde antes disso = atrasado (alerta). */
   atrasoAntes: string;
   /** Orçamento sem resposta: nossa última mensagem entre estas duas datas. */
@@ -94,6 +96,7 @@ export async function loadLookups(userId: string, stages: string[], search?: str
     retomarAntes: new Date(agora - alertas.retomar_dias * 864e5).toISOString(),
     retomarDepois: new Date(agora - RETOMAR_JANELA_DIAS * 864e5).toISOString(),
     restrito: !can(agent, "ver_todas"),
+    canais: agent?.canais ?? null,
     myDepartments: (check(mine) as { department_id: string }[]).map((m) => m.department_id),
     stageContacts,
     searchContacts: q ? (check(contacts) as { id: string }[]).map((c) => c.id) : null,
@@ -104,7 +107,11 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
   let q = query;
   // Atendente sem acesso total: só os clientes que ele está atendendo e os que ainda aguardam
   // atendimento (sem atendente), nunca as encerradas nem as dos colegas.
-  if (lk.restrito) {
+  if (lk.restrito && lk.canais) {
+    // Atendente com canais definidos: só as conversas dos números/e-mails liberados para ele e as que ele atende.
+    const ch = lk.canais.length ? `,connection_id.in.(${lk.canais.join(",")})` : "";
+    q = q.neq("status", "closed").or(`assigned_to.eq.${userId}${ch}`);
+  } else if (lk.restrito) {
     const deps = lk.myDepartments.length ? `,department_id.in.(${lk.myDepartments.join(",")})` : "";
     q = q.neq("status", "closed").or(`assigned_to.eq.${userId},and(assigned_to.is.null,or(department_id.is.null${deps}))`);
   }

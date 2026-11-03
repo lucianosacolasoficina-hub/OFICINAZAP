@@ -21,6 +21,8 @@ export type Agent = {
   role: "admin" | "agent";
   permissions: Partial<Record<PermKey, boolean>>;
   active: boolean;
+  /** Canais (números de WhatsApp, e-mails, Instagram...) que o atendente pode ver. null = regra antiga por departamento. */
+  canais: string[] | null;
 };
 
 // Guarda o atendente por 20 segundos para não consultar o banco a cada pedido.
@@ -46,6 +48,7 @@ async function lerAgent(userId: string): Promise<Agent | null> {
     role: data.role === "admin" ? "admin" : "agent",
     permissions: (data.permissions ?? {}) as Agent["permissions"],
     active: data.active !== false,
+    canais: Array.isArray((data.permissions ?? {}).canais) ? ((data.permissions as { canais: unknown[] }).canais.filter((x) => typeof x === "string") as string[]) : null,
   };
 }
 
@@ -85,10 +88,12 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
 /** Atendente restrito pode abrir esta conversa? (a dele, ou ainda sem atendente e não encerrada) */
 export function podeVerConversa(
   userId: string,
-  conv: { assigned_to: string | null; status: string; department_id: string | null },
+  conv: { assigned_to: string | null; status: string; department_id: string | null; connection_id?: string | null },
   myDepartments: string[],
+  canais: string[] | null = null,
 ) {
   if (conv.status === "closed") return false;
+  if (canais) return conv.assigned_to === userId || (!!conv.connection_id && canais.includes(conv.connection_id));
   if (conv.assigned_to) return conv.assigned_to === userId;
   return !conv.department_id || myDepartments.includes(conv.department_id);
 }

@@ -26,10 +26,10 @@ export function route<C>(handler: (req: Request, ctx: C, userId: string) => Prom
       if (conv && agent && !can(agent, "ver_todas")) {
         const db = supabaseAdmin();
         const [{ data: c }, { data: deps }] = await Promise.all([
-          db.from("conversations").select("assigned_to, status, department_id").eq("id", conv[1]).maybeSingle(),
+          db.from("conversations").select("assigned_to, status, department_id, connection_id").eq("id", conv[1]).maybeSingle(),
           db.from("department_agents").select("department_id").eq("agent_id", user.id),
         ]);
-        if (c && !podeVerConversa(user.id, c, (deps ?? []).map((d) => d.department_id))) {
+        if (c && !podeVerConversa(user.id, c, (deps ?? []).map((d) => d.department_id), agent.canais)) {
           throw new HttpError(403, "esta conversa está com outro atendente ou já foi encerrada");
         }
       }

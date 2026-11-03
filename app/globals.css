@@ -819,3 +819,6 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .composer .qr-btn{flex:none;width:42px;height:42px;border-radius:12px;border:1.5px solid var(--line, #d7dbe3);background:#fff7ed;font-size:20px;cursor:pointer;align-self:flex-end}
 .composer .qr-btn:hover{background:#ffedd5;border-color:#fdba74}
 .qr-pop{max-height:340px;overflow:auto}
+
+/* equipe: canais que o atendente vê */
+.eq-canais{display:flex;flex-direction:column;gap:6px;border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:10px 12px;max-height:240px;overflow:auto}

@@ -5,20 +5,23 @@ import { api } from "@/lib/client";
 import { useMe } from "@/lib/useMe";
 
 type Perm = { key: string; label: string; desc: string; padrao: boolean };
-type Row = { id: string; name: string; email: string; role: "admin" | "agent"; permissions: Record<string, boolean>; active: boolean };
-type Draft = { id?: string; name: string; email: string; password: string; role: "admin" | "agent"; permissions: Record<string, boolean>; active: boolean };
+type Row = { id: string; name: string; email: string; role: "admin" | "agent"; permissions: Record<string, boolean | string[]>; active: boolean };
+type Canal = { id: string; name: string; channel: string | null; phone: string | null };
+type Draft = { id?: string; name: string; email: string; password: string; role: "admin" | "agent"; permissions: Record<string, boolean>; active: boolean; canais: string[] | null };
 
 export default function TeamPage() {
   const me = useMe();
   const [rows, setRows] = useState<Row[]>([]);
   const [perms, setPerms] = useState<Perm[]>([]);
+  const [canais, setCanais] = useState<Canal[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = () =>
-    api<{ agents: Row[]; perms: Perm[] }>("/api/team").then((r) => {
+    api<{ agents: Row[]; perms: Perm[]; canais: Canal[] }>("/api/team").then((r) => {
+      setCanais(r.canais ?? []);
       setRows(r.agents);
       setPerms(r.perms);
     });
@@ -27,14 +30,16 @@ export default function TeamPage() {
     load().catch((e) => setError(e.message));
   }, []);
 
-  const valor = (d: { role: string; permissions: Record<string, boolean> }, p: Perm) =>
-    d.role === "admin" ? true : d.permissions[p.key] ?? p.padrao;
+  const valor = (d: { role: string; permissions: Record<string, boolean | string[]> }, p: Perm) =>
+    d.role === "admin" ? true : (d.permissions[p.key] as boolean | undefined) ?? p.padrao;
+  const canaisDe = (r: { permissions: Record<string, boolean | string[]> }) => (Array.isArray(r.permissions.canais) ? (r.permissions.canais as string[]) : null);
+  const icone = (c: Canal) => (c.channel === "instagram" ? "📸" : c.channel === "messenger" ? "💬" : c.channel === "email" ? "✉️" : "📱");
 
   const novo = () =>
-    setDraft({ name: "", email: "", password: "", role: "agent", active: true, permissions: Object.fromEntries(perms.map((p) => [p.key, p.padrao])) });
+    setDraft({ name: "", email: "", password: "", role: "agent", active: true, canais: [], permissions: Object.fromEntries(perms.map((p) => [p.key, p.padrao])) });
 
   const editar = (r: Row) =>
-    setDraft({ id: r.id, name: r.name, email: r.email, password: "", role: r.role, active: r.active, permissions: Object.fromEntries(perms.map((p) => [p.key, valor(r, p)])) });
+    setDraft({ id: r.id, name: r.name, email: r.email, password: "", role: r.role, active: r.active, canais: canaisDe(r), permissions: Object.fromEntries(perms.map((p) => [p.key, valor(r, p)])) });
 
   async function salvar() {
     if (!draft) return;
@@ -44,11 +49,11 @@ export default function TeamPage() {
       if (draft.id) {
         await api(`/api/team/${draft.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ name: draft.name, role: draft.role, permissions: draft.permissions, active: draft.active, ...(draft.password ? { password: draft.password } : {}) }),
+          body: JSON.stringify({ name: draft.name, role: draft.role, permissions: { ...draft.permissions, ...(draft.canais ? { canais: draft.canais } : {}) }, active: draft.active, ...(draft.password ? { password: draft.password } : {}) }),
         });
         setNotice(`Permissões de ${draft.name} salvas.`);
       } else {
-        await api("/api/team", { method: "POST", body: JSON.stringify(draft) });
+        await api("/api/team", { method: "POST", body: JSON.stringify({ ...draft, permissions: { ...draft.permissions, canais: draft.canais ?? [] } }) });
         setNotice(`${draft.name} cadastrado. Passe para ele o e-mail e a senha inicial para entrar no OficinaZap.`);
       }
       setDraft(null);
@@ -89,6 +94,7 @@ export default function TeamPage() {
               <th>Atendente</th>
               <th>Papel</th>
               {perms.map((p) => <th key={p.key} title={p.desc}>{p.label}</th>)}
+              <th>Canais que vê</th>
               <th>Situação</th>
               <th />
             </tr>
@@ -99,6 +105,7 @@ export default function TeamPage() {
                 <td><b>{r.name}</b>{r.id === me?.id && " (você)"}<br /><span className="muted">{r.email}</span></td>
                 <td>{r.role === "admin" ? "Administrador" : "Atendente"}</td>
                 {perms.map((p) => <td key={p.key} style={{ textAlign: "center" }}>{valor(r, p) ? "✅" : "—"}</td>)}
+                <td>{r.role === "admin" ? "Todos" : canaisDe(r) ? canais.filter((c) => canaisDe(r)!.includes(c.id)).map((c) => c.name).join(", ") || "Nenhum" : "Por departamento"}</td>
                 <td>{r.active ? "Ativo" : "Desativado"}</td>
                 <td><button onClick={() => editar(r)}>Editar</button></td>
               </tr>
@@ -134,6 +141,25 @@ export default function TeamPage() {
                       onChange={(e) => setDraft({ ...draft, permissions: { ...draft.permissions, [p.key]: e.target.checked } })}
                     />
                     <span><b>{p.label}</b><br /><small className="muted">{p.desc}</small></span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {draft.role === "agent" && canais.length > 0 && (
+              <div className="eq-canais">
+                <b>Canais que este atendente vê</b>
+                <small className="muted">Marque o número/e-mail dele e, se quiser, os de outros atendentes. Ele vê as conversas desses canais e as que forem passadas para ele.{draft.permissions.ver_todas ? " (Com “Acesso total” ligado ele vê todos os canais.)" : ""}</small>
+                {canais.map((c) => (
+                  <label key={c.id} className="eq-perm">
+                    <input
+                      type="checkbox"
+                      checked={!!draft.canais?.includes(c.id)}
+                      onChange={(e) => {
+                        const atual = draft.canais ?? [];
+                        setDraft({ ...draft, canais: e.target.checked ? [...atual, c.id] : atual.filter((x) => x !== c.id) });
+                      }}
+                    />
+                    <span>{icone(c)} <b>{c.name}</b>{c.phone ? <small className="muted"> · {c.phone}</small> : null}</span>
                   </label>
                 ))}
               </div>

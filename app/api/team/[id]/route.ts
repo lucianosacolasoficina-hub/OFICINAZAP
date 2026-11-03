@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 /** Altera nome, papel, permissões, situação (ativo) ou senha de um atendente. */
 export const PATCH = route(async (req, ctx: IdCtx, userId) => {
   const { id } = await ctx.params;
-  const b = (await req.json()) as { name?: string; role?: string; permissions?: Record<string, boolean>; active?: boolean; password?: string };
+  const b = (await req.json()) as { name?: string; role?: string; permissions?: Record<string, unknown>; active?: boolean; password?: string };
   const db = supabaseAdmin();
   if (id === userId && (b.active === false || b.role === "agent")) {
     throw new HttpError(400, "você não pode tirar o seu próprio acesso de administrador");
