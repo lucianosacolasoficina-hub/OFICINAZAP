@@ -152,7 +152,7 @@ export default function SettingsPage() {
         <p className="muted">
           Cliente esperando resposta há mais que o limite fica em vermelho e aparece um aviso no topo das conversas (com som e
           notificação no computador, se você permitir). Quando a última mensagem foi nossa e o cliente não respondeu nos dias
-          escolhidos, a conversa entra no filtro <b>Retomar</b>, com o Lula pronto para escrever a mensagem de retomada.
+          escolhidos, a conversa entra no filtro <b>Retomar</b>, com a Candace pronta para escrever a mensagem de retomada.
         </p>
         <div className="row" style={{ gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ width: 230 }}>

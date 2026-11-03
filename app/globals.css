@@ -198,7 +198,8 @@ button.pd-cta small { background: rgba(255,255,255,.22); border-radius: 99px; pa
 .pd-menu button small { grid-column: 2; color: var(--muted); font-size: 12px; }
 .pd-dica { font-size: 12px; color: var(--muted); padding: 4px 8px; }
 
-/* Lula, assistente de IA */
+/* Candace, assistente de IA */
+.lula-lancar{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:8px;background:#15803d;color:#fff;font-weight:700;text-decoration:none;font-size:13px}.lula-lancar:hover{filter:brightness(1.08)}
 button.lula-cta { background: #5b3df5; border-color: #5b3df5; color: #fff; border-radius: 99px; padding: 7px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
 button.lula-cta small { background: rgba(255,255,255,.22); border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
 .pd-menu.lula-pop { width: 380px; gap: 8px; padding: 12px; }

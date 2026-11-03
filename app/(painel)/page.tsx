@@ -1094,16 +1094,17 @@ function Chat({
             <button className="primary" onClick={() => onStatus("open")}>Assumir</button>
           )}
           <span className="pd-wrap">
-            <button className="ch2-ic lula" onClick={() => setLula((l) => ({ ...l, open: !l.open }))} title="Lula, assistente de IA: sugere resposta, resume a conversa">🤖</button>
+            <button className="ch2-ic lula" onClick={() => setLula((l) => ({ ...l, open: !l.open }))} title="Candace, assistente de IA: sugere resposta, resume a conversa e lança o pedido no sistema">🤖</button>
           {lula.open && (
             <span className="pd-menu lula-pop">
-              <b className="lula-h">🤖 Lula · assistente de IA</b>
+              <b className="lula-h">🤖 Candace · assistente de IA</b>
               <span className="lula-acts">
                 {c.status !== "closed" && <button disabled={lula.busy} onClick={() => perguntarLula("sugerir")}>✍️ Sugerir resposta</button>}
                 {c.status !== "closed" && <button disabled={lula.busy || !text.trim()} title={text.trim() ? "Deixa a mensagem que você escreveu mais clara e cordial, sem mudar valores e prazos" : "Escreva a mensagem na caixa de texto primeiro"} onClick={() => perguntarLula("melhorar")}>✨ Melhorar minha mensagem</button>}
                 {c.status !== "closed" && <button disabled={lula.busy} title="Resposta para 'tá caro', 'vou pensar', 'já tenho fornecedor'..." onClick={() => perguntarLula("objecao")}>🛡 Responder objeção</button>}
                 {c.status !== "closed" && <button disabled={lula.busy} title="Mensagem para retomar quando o cliente parou de responder" onClick={() => perguntarLula("followup")}>🔁 Retomar (follow-up)</button>}
                 <button disabled={lula.busy} onClick={() => perguntarLula("resumir")}>📝 Resumir conversa</button>
+                <a className="lula-lancar" href={`https://sistema.sacolasoficina.com.br/?candace=${c.id}`} target="_blank" rel="noopener" title="Abre o sistema de gestão com a Candace lendo esta conversa para lançar o pedido ou anexar os arquivos">🛒 Lançar pedido no sistema</a>
               </span>
               <span className="lula-ask">
                 <input
@@ -1114,7 +1115,7 @@ function Chat({
                 />
                 <button disabled={lula.busy || !lula.q.trim()} onClick={() => perguntarLula("perguntar")}>Perguntar</button>
               </span>
-              {lula.busy && <span className="muted">Lula está pensando…</span>}
+              {lula.busy && <span className="muted">Candace está pensando…</span>}
               {lula.out && (
                 <span className="lula-out">
                   {lula.out}
@@ -1125,7 +1126,7 @@ function Chat({
                   )}
                 </span>
               )}
-              <span className="pd-dica">O Lula nunca envia nada sozinho: você revisa e clica em Enviar.</span>
+              <span className="pd-dica">A Candace nunca envia nada sozinha: você revisa e clica em Enviar.</span>
             </span>
           )}
           </span>

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { emailDaGestao } from "@/lib/gestaoAuth";
 
-// Lula, o assistente de IA do sistema de gestão (sistema.sacolasoficina.com.br).
+// Candace, a assistente de IA do sistema de gestão (sistema.sacolasoficina.com.br).
 // O sistema manda as regras, a conversa e as ferramentas; as ferramentas rodam lá no navegador,
 // com as permissões de quem está logado. Aqui só conferimos a sessão e chamamos a IA.
 const MODEL = process.env.AI_MODEL || "claude-opus-5-5";
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     description: String(t.description ?? "").slice(0, 2000),
     input_schema: (t.input_schema ?? { type: "object", properties: {} }) as Anthropic.Beta.BetaTool.InputSchema,
   }));
-  if (!messages.length || JSON.stringify(messages).length > 400000) return resp(req, { error: "conversa inválida" }, 400);
+  if (!messages.length || JSON.stringify(messages).length > 6000000) return resp(req, { error: "conversa inválida" }, 400);
 
   try {
     const r = await new Anthropic().beta.messages.create({
@@ -47,13 +47,13 @@ export async function POST(req: Request) {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "low" },
-      system: `${system}\n\nSeu nome é Lula. Você é o assistente de IA da Sacolas Oficina. Quem está falando com você: ${email}.`,
+      system: `${system}\n\nSeu nome é Candace. Você é a assistente de IA da Sacolas Oficina (fale no feminino). Quem está falando com você: ${email}.`,
       ...(tools.length ? { tools } : {}),
       messages,
     });
     return resp(req, { content: r.content, stop_reason: r.stop_reason });
   } catch (err) {
-    console.error("Lula (gestão) falhou", err);
+    console.error("Candace (gestão) falhou", err);
     const status = (err as { status?: number }).status;
     return resp(req, { error: "a IA não respondeu agora", code: status === 429 ? "rate_limited" : "erro" }, 502);
   }
