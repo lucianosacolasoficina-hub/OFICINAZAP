@@ -9,6 +9,15 @@ type Row = { id: string; name: string; email: string; role: "admin" | "agent"; p
 type Canal = { id: string; name: string; channel: string | null; phone: string | null };
 type Draft = { id?: string; name: string; email: string; password: string; role: "admin" | "agent"; permissions: Record<string, boolean>; active: boolean; canais: string[] | null };
 
+// Grupos das permissões na janela do atendente. Permissão nova sem grupo cai em "Outras".
+const GRUPOS = [
+  { id: "conversas", nome: "Conversas", icone: "💬", keys: ["ver_todas", "apagar_historico", "sistema_gestao"] },
+  { id: "vendas", nome: "Vendas e organização", icone: "📈", keys: ["funil", "tarefas", "contatos"] },
+  { id: "admin", nome: "Administração do sistema", icone: "⚙️", keys: ["departamentos", "whatsapp", "configuracoes"] },
+  { id: "outras", nome: "Outras", icone: "•", keys: [] as string[] },
+];
+const grupoDe = (key: string) => GRUPOS.find((g) => g.keys.includes(key))?.id ?? "outras";
+
 function gerarSenha() {
   const letras = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const buf = new Uint32Array(10);
@@ -182,23 +191,42 @@ export default function TeamPage() {
               {draft.role === "agent" && (
                 <section className="eq-sec">
                   <div className="eq-sec-h">
-                    <h3>3. O que ele pode fazer</h3>
+                    <h3>3. Permissões: o que ele pode fazer</h3>
                     <button type="button" className="eq-link" onClick={() => setDraft({ ...draft, permissions: Object.fromEntries(perms.map((p) => [p.key, !todasMarcadas])) })}>
                       {todasMarcadas ? "Desmarcar todas" : "Marcar todas"}
                     </button>
                   </div>
-                  <div className="eq-perms">
-                    {perms.map((p) => (
-                      <label key={p.key} className={`eq-perm${draft.permissions[p.key] ? " on" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={!!draft.permissions[p.key]}
-                          onChange={(e) => setDraft({ ...draft, permissions: { ...draft.permissions, [p.key]: e.target.checked } })}
-                        />
-                        <span><b>{p.label}</b><small className="muted">{p.desc}</small></span>
-                      </label>
-                    ))}
-                  </div>
+                  {GRUPOS.map((g) => {
+                    const lista = perms.filter((p) => grupoDe(p.key) === g.id);
+                    if (!lista.length) return null;
+                    const tudo = lista.every((p) => draft.permissions[p.key]);
+                    return (
+                      <div key={g.id} className="eq-grupo">
+                        <div className="eq-grupo-h">
+                          <span>{g.icone} <b>{g.nome}</b> <small className="muted">{lista.filter((p) => draft.permissions[p.key]).length} de {lista.length}</small></span>
+                          <button
+                            type="button"
+                            className="eq-link"
+                            onClick={() => setDraft({ ...draft, permissions: { ...draft.permissions, ...Object.fromEntries(lista.map((p) => [p.key, !tudo])) } })}
+                          >
+                            {tudo ? "Desmarcar grupo" : "Marcar grupo"}
+                          </button>
+                        </div>
+                        <div className="eq-perms">
+                          {lista.map((p) => (
+                            <label key={p.key} className={`eq-perm${draft.permissions[p.key] ? " on" : ""}`}>
+                              <input
+                                type="checkbox"
+                                checked={!!draft.permissions[p.key]}
+                                onChange={(e) => setDraft({ ...draft, permissions: { ...draft.permissions, [p.key]: e.target.checked } })}
+                              />
+                              <span><b>{p.label}</b><small className="muted">{p.desc}</small></span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </section>
               )}
 
