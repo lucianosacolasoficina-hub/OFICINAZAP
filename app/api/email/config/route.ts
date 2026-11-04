@@ -1,16 +1,18 @@
 import { HttpError, route } from "@/lib/api";
 import { emailUrl, getEmailConfig, saveEmailConfig } from "@/lib/email";
+import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Ligação do Outlook: o que configurar na Microsoft e as contas conectadas (sem expor a chave secreta).
-export const GET = route(async () => {
+export const GET = route(async (_req, _ctx, userId) => {
+  const liberados = canaisDe(await getAgent(userId));
   const cfg = await getEmailConfig();
   const { data: contas } = await supabaseAdmin()
     .from("whatsapp_connections")
     .select("id, name, connected_at, department_id, tok:email_tokens(address, last_sync, last_error), imap:email_imap(address, last_sync, last_error)")
     .eq("channel", "email")
     .order("created_at");
-  return { client_id: cfg.client_id, tem_chave: !!cfg.client_secret, tenant: cfg.tenant, redirect_uri: emailUrl("/api/email/callback"), contas: contas ?? [] };
+  return { client_id: cfg.client_id, tem_chave: !!cfg.client_secret, tenant: cfg.tenant, redirect_uri: emailUrl("/api/email/callback"), contas: (contas ?? []).filter((c) => !liberados || liberados.includes(c.id)) };
 });
 
 export const PUT = route(async (req) => {

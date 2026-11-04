@@ -1,6 +1,6 @@
 import { route } from "@/lib/api";
 import { countAll, parseFilter } from "@/lib/inbox";
-import { can, getAgent } from "@/lib/perms";
+import { can, canaisDe, getAgent } from "@/lib/perms";
 import { listConnections, syncState } from "@/lib/connections";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAlertas } from "@/lib/alertas";
@@ -28,7 +28,9 @@ export const GET = route(async (req, _ctx, userId) => {
   const db = supabaseAdmin();
   const agent = await getAgent(userId);
   const total = can(agent, "ver_todas");
-  const conns = await estadosNumeros();
+  // Atendente só enxerga (e usa) os números liberados para ele.
+  const liberados = canaisDe(agent);
+  const conns = (await estadosNumeros()).filter((c) => !liberados || liberados.includes(c.id));
   const [counts, connections, agents, abertas, alertas] = await Promise.all([
     countAll(userId, filter, (conns ?? []).map((c) => c.id)),
     Promise.resolve({ data: conns }),

@@ -2,7 +2,7 @@ import { supabaseAdmin } from "./supabase/admin";
 
 // Permissões dos atendentes. O administrador pode tudo e gerencia a equipe.
 export const PERMS = {
-  ver_todas: { label: "Acesso total às conversas", desc: "Desligado: vê só os clientes que ele está atendendo e os que ainda aguardam atendimento (sem as encerradas e sem as dos colegas)", padrao: false },
+  ver_todas: { label: "Ver tudo dos números liberados", desc: "Inclui as conversas encerradas, o Painel e direcionar conversas para colegas. Só vale para os números marcados para ele: os outros WhatsApps continuam bloqueados", padrao: false },
   apagar_historico: { label: "Apagar histórico de mensagens", desc: "Botão 🗑 Apagar histórico na conversa", padrao: false },
   sistema_gestao: { label: "Ver pedidos e saldo do sistema de gestão", desc: "Quadro 📦 Sistema de gestão ao lado da conversa", padrao: true },
   funil: { label: "Funil de vendas", desc: "Ver e mover os cards do funil", padrao: true },
@@ -21,7 +21,7 @@ export type Agent = {
   role: "admin" | "agent";
   permissions: Partial<Record<PermKey, boolean>>;
   active: boolean;
-  /** Canais (números de WhatsApp, e-mails, Instagram...) que o atendente pode ver. null = regra antiga por departamento. */
+  /** Canais (números de WhatsApp, e-mails, Instagram...) que o atendente pode ver. null = sem limite (dono/administrador). */
   canais: string[] | null;
 };
 
@@ -42,14 +42,29 @@ export async function getAgent(userId: string): Promise<Agent | null> {
 async function lerAgent(userId: string): Promise<Agent | null> {
   const { data } = await supabaseAdmin().from("agents").select("*").eq("id", userId).maybeSingle();
   if (!data) return null;
+  const role = data.role === "admin" ? "admin" : "agent";
+  const lista = (data.permissions ?? {}).canais;
   return {
     id: data.id,
     name: data.name,
-    role: data.role === "admin" ? "admin" : "agent",
+    role,
     permissions: (data.permissions ?? {}) as Agent["permissions"],
     active: data.active !== false,
-    canais: Array.isArray((data.permissions ?? {}).canais) ? ((data.permissions as { canais: unknown[] }).canais.filter((x) => typeof x === "string") as string[]) : null,
+    // Só o administrador vê todos os números. Atendente sem números marcados não vê nenhum
+    // (só as conversas que forem passadas para ele).
+    canais: role === "admin" ? null : Array.isArray(lista) ? (lista.filter((x: unknown) => typeof x === "string") as string[]) : [],
   };
+}
+
+/** Números/canais que o atendente pode usar. null = todos (dono/administrador). */
+export function canaisDe(agent: Agent | null): string[] | null {
+  return agent ? agent.canais : null;
+}
+
+/** O dono do sistema: o administrador mais antigo. Só ele mexe na equipe e dá acesso. */
+export async function isDono(userId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin().from("agents").select("id").eq("role", "admin").eq("active", true).order("created_at").limit(1).maybeSingle();
+  return data?.id === userId;
 }
 
 export function can(agent: Agent | null, key: PermKey): boolean {
@@ -67,6 +82,9 @@ export function allPerms(agent: Agent | null): Record<PermKey, boolean> {
 export function permFor(method: string, path: string): PermKey | "admin" | null {
   const escrita = method !== "GET";
   if (path.startsWith("/api/team")) return "admin";
+  // Cadastrar ou apagar número de WhatsApp: só o administrador.
+  if (path === "/api/whatsapp" && escrita) return "admin";
+  if (/^\/api\/whatsapp\/[^/]+$/.test(path) && method === "DELETE") return "admin";
   if (path.startsWith("/api/instagram")) return escrita ? "admin" : "whatsapp";
   if (path === "/api/email/sync") return null;
   if (path.startsWith("/api/email")) return escrita ? "admin" : "whatsapp";
@@ -85,15 +103,17 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   return null;
 }
 
-/** Atendente restrito pode abrir esta conversa? (a dele, ou ainda sem atendente e não encerrada) */
+/**
+ * Atendente pode abrir esta conversa? Só as dos números liberados para ele e as que estão com ele.
+ * Encerradas só com "Ver tudo dos números liberados".
+ */
 export function podeVerConversa(
   userId: string,
-  conv: { assigned_to: string | null; status: string; department_id: string | null; connection_id?: string | null },
-  myDepartments: string[],
-  canais: string[] | null = null,
+  conv: { assigned_to: string | null; status: string; connection_id?: string | null },
+  canais: string[] | null,
+  verTudo: boolean,
 ) {
-  if (conv.status === "closed") return false;
-  if (canais) return conv.assigned_to === userId || (!!conv.connection_id && canais.includes(conv.connection_id));
-  if (conv.assigned_to) return conv.assigned_to === userId;
-  return !conv.department_id || myDepartments.includes(conv.department_id);
+  if (!canais) return true;
+  if (conv.status === "closed" && !verTudo) return false;
+  return conv.assigned_to === userId || (!!conv.connection_id && canais.includes(conv.connection_id));
 }

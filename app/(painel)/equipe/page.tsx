@@ -55,7 +55,7 @@ export default function TeamPage() {
     setDraft({ name: "", email: "", password: "", role: "agent", active: true, canais: [], permissions: Object.fromEntries(perms.map((p) => [p.key, p.padrao])) });
 
   const editar = (r: Row) =>
-    setDraft({ id: r.id, name: r.name, email: r.email, password: "", role: r.role, active: r.active, canais: canaisDe(r), permissions: Object.fromEntries(perms.map((p) => [p.key, valor(r, p)])) });
+    setDraft({ id: r.id, name: r.name, email: r.email, password: "", role: r.role, active: r.active, canais: canaisDe(r) ?? [], permissions: Object.fromEntries(perms.map((p) => [p.key, valor(r, p)])) });
 
   async function salvar() {
     if (!draft) return;
@@ -103,7 +103,7 @@ export default function TeamPage() {
         <button className="primary" onClick={novo} disabled={!perms.length}>+ Novo atendente</button>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
-        O <b>administrador</b> pode tudo. Para cada <b>atendente</b>, escolha o que ele pode fazer. Desativar bloqueia o acesso sem apagar as conversas dele.
+        Só o <b>administrador</b> (você, o dono) vê todos os WhatsApps e dá acesso. Cada <b>atendente</b> vê apenas os números marcados para ele e as conversas passadas para ele; os outros números ficam bloqueados. Desativar bloqueia o acesso sem apagar as conversas dele.
       </p>
       {notice && <div className="card" style={{ borderColor: "var(--brand)" }}>{notice}</div>}
       {error && !draft && <div className="card" style={{ color: "var(--danger)" }}>{error}</div>}
@@ -126,7 +126,7 @@ export default function TeamPage() {
                 <td><b>{r.name}</b>{r.id === me?.id && " (você)"}<br /><span className="muted">{r.email}</span></td>
                 <td>{r.role === "admin" ? "Administrador" : "Atendente"}</td>
                 {perms.map((p) => <td key={p.key} style={{ textAlign: "center" }}>{valor(r, p) ? "✅" : "—"}</td>)}
-                <td>{r.role === "admin" ? "Todos" : canaisDe(r) ? canais.filter((c) => canaisDe(r)!.includes(c.id)).map((c) => c.name).join(", ") || "Nenhum" : "Por departamento"}</td>
+                <td>{r.role === "admin" ? "Todos" : canais.filter((c) => (canaisDe(r) ?? []).includes(c.id)).map((c) => c.name).join(", ") || "Nenhum"}</td>
                 <td>{r.active ? "Ativo" : "Desativado"}</td>
                 <td><button onClick={() => editar(r)}>Editar</button></td>
               </tr>
@@ -177,7 +177,7 @@ export default function TeamPage() {
                   {(
                     [
                       ["agent", "Atendente", "Só faz o que você marcar abaixo"],
-                      ["admin", "Administrador", "Pode tudo e gerencia a equipe"],
+                      ["admin", "Administrador", "Acesso total a todos os WhatsApps e gerencia a equipe"],
                     ] as const
                   ).map(([v, t, d]) => (
                     <label key={v} className={`eq-papel${draft.role === v ? " on" : ""}`}>
@@ -234,8 +234,8 @@ export default function TeamPage() {
                 <section className="eq-sec">
                   <h3>4. Canais que ele vê</h3>
                   <small className="muted">
-                    Marque o número/e-mail dele e, se quiser, os de outros atendentes. Ele vê as conversas desses canais e as que forem passadas para ele.
-                    {draft.permissions.ver_todas ? " Com “Acesso total às conversas” ligado ele já vê todos os canais." : ""}
+                    Marque o número/e-mail dele e, se quiser, os de outros atendentes. Ele só vê as conversas desses canais e as que forem passadas para ele.
+                    Os números desmarcados ficam bloqueados para ele, mesmo com as outras permissões ligadas.
                   </small>
                   <div className="eq-canais">
                     {canais.map((c) => (

@@ -1,6 +1,6 @@
 import { getEtapas } from "./crm";
 import { getAlertas } from "./alertas";
-import { can, getAgent } from "./perms";
+import { can, canaisDe, getAgent } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 // Filtros da tela de conversas (lado esquerdo), usados na lista e nos contadores.
@@ -29,8 +29,9 @@ type Lookups = {
   myDepartments: string[];
   stageContacts: Map<string, string[]>;
   searchContacts: string[] | null;
+  /** Sem "Ver tudo dos números liberados": esconde encerradas. */
   restrito?: boolean;
-  /** Canais liberados para o atendente (null = regra por departamento). */
+  /** Canais liberados para o atendente (null = todos: dono/administrador). */
   canais?: string[] | null;
   /** Cliente esperando desde antes disso = atrasado (alerta). */
   atrasoAntes: string;
@@ -96,7 +97,7 @@ export async function loadLookups(userId: string, stages: string[], search?: str
     retomarAntes: new Date(agora - alertas.retomar_dias * 864e5).toISOString(),
     retomarDepois: new Date(agora - RETOMAR_JANELA_DIAS * 864e5).toISOString(),
     restrito: !can(agent, "ver_todas"),
-    canais: agent?.canais ?? null,
+    canais: canaisDe(agent),
     myDepartments: (check(mine) as { department_id: string }[]).map((m) => m.department_id),
     stageContacts,
     searchContacts: q ? (check(contacts) as { id: string }[]).map((c) => c.id) : null,
@@ -105,15 +106,12 @@ export async function loadLookups(userId: string, stages: string[], search?: str
 
 export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, userId: string, lk: Lookups): T {
   let q = query;
-  // Atendente sem acesso total: só os clientes que ele está atendendo e os que ainda aguardam
-  // atendimento (sem atendente), nunca as encerradas nem as dos colegas.
-  if (lk.restrito && lk.canais) {
-    // Atendente com canais definidos: só as conversas dos números/e-mails liberados para ele e as que ele atende.
+  // Atendente: só as conversas dos números liberados para ele e as que estão com ele.
+  // Os outros números de WhatsApp ficam bloqueados (só o dono/administrador vê todos).
+  if (lk.canais) {
     const ch = lk.canais.length ? `,connection_id.in.(${lk.canais.join(",")})` : "";
-    q = q.neq("status", "closed").or(`assigned_to.eq.${userId}${ch}`);
-  } else if (lk.restrito) {
-    const deps = lk.myDepartments.length ? `,department_id.in.(${lk.myDepartments.join(",")})` : "";
-    q = q.neq("status", "closed").or(`assigned_to.eq.${userId},and(assigned_to.is.null,or(department_id.is.null${deps}))`);
+    q = q.or(`assigned_to.eq.${userId}${ch}`);
+    if (lk.restrito) q = q.neq("status", "closed");
   }
   switch (f.view) {
     case "todas":

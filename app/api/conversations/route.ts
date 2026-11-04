@@ -2,6 +2,7 @@ import { HttpError, route } from "@/lib/api";
 import { getConnection } from "@/lib/connections";
 import { activeConversation, updateConversation, upsertContact } from "@/lib/db";
 import { applyFilter, LIST_SELECT, loadLookups, parseFilter } from "@/lib/inbox";
+import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async (req, _ctx, userId) => {
@@ -33,6 +34,11 @@ export const POST = route(async (req, _ctx, userId) => {
   if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
   if (phone.length < 12 || phone.length > 15) throw new HttpError(400, "telefone inválido: use DDD + número");
 
+  // Atendente só inicia conversa pelos números liberados para ele.
+  const liberados = canaisDe(await getAgent(userId));
+  if (liberados && (!body.connection_id || !liberados.includes(body.connection_id))) {
+    throw new HttpError(403, "escolha um dos números de WhatsApp liberados para você");
+  }
   const connection = body.connection_id ? await getConnection(body.connection_id) : null;
   if (body.connection_id && !connection) throw new HttpError(404, "número de WhatsApp não encontrado");
 

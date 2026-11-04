@@ -1,12 +1,14 @@
 import { HttpError, route } from "@/lib/api";
 import { createConnection, listConnections, MAX_CONNECTIONS, requireEvolution, syncState } from "@/lib/connections";
+import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Números de WhatsApp conectados pela Evolution API (QR Code), na tela WhatsApp.
-export const GET = route(async () => {
+export const GET = route(async (_req, _ctx, userId) => {
   requireEvolution();
+  const liberados = canaisDe(await getAgent(userId));
   const [connections, departments] = await Promise.all([
-    listConnections(),
+    listConnections().then((l) => l.filter((c) => !liberados || liberados.includes(c.id))),
     supabaseAdmin().from("departments").select("id, name").order("name"),
   ]);
   return {

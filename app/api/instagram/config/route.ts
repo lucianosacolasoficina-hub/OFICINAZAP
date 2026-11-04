@@ -1,10 +1,12 @@
 import { route, HttpError } from "@/lib/api";
 import { getIgConfig, saveIgConfig, igUrl } from "@/lib/instagram";
 import { publicUrl } from "@/lib/origin";
+import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Tela de ligação do Instagram: mostra o que configurar na Meta e as contas conectadas (sem expor a chave secreta).
-export const GET = route(async (req) => {
+export const GET = route(async (req, _ctx, userId) => {
+  const liberados = canaisDe(await getAgent(userId));
   const cfg = await getIgConfig();
   const { data: contas } = await supabaseAdmin()
     .from("whatsapp_connections")
@@ -20,7 +22,7 @@ export const GET = route(async (req) => {
     redirect_uri: igUrl("/api/instagram/callback"),
     privacidade_url: igUrl("/privacidade"),
     exclusao_url: igUrl("/exclusao-de-dados"),
-    contas: contas ?? [],
+    contas: (contas ?? []).filter((c) => !liberados || liberados.includes(c.id)),
   };
 });
 
