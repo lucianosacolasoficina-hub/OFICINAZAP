@@ -852,3 +852,9 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .eq-foot-btns { display: flex; gap: 8px; justify-content: flex-end; }
 .eq-erro { color: var(--danger); font-size: 13px; }
 @media (max-width: 640px) { .eq-grid, .eq-papeis, .eq-perms, .eq-canais { grid-template-columns: 1fr; } }
+
+/* Foto colada/escolhida esperando envio */
+.composer .foto-pre{position:absolute;left:10px;right:10px;bottom:calc(100% + 6px);display:flex;align-items:center;gap:10px;padding:8px;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:5}
+.composer .foto-pre img{max-height:120px;max-width:180px;border-radius:8px;object-fit:contain;background:#f3f4f6}
+.composer .foto-pre span{flex:1;font-size:13px}
+.composer .foto-pre button{border:none;background:none;font-size:22px;cursor:pointer;line-height:1}

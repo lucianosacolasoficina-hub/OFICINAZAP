@@ -308,6 +308,25 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { waMessageId: data.key?.id };
   }
 
+  async sendImage(phone: string, file: MediaFile, caption?: string) {
+    const ext = file.mimeType.split("/")[1] || "png";
+    const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: this.apiKey },
+      body: JSON.stringify({
+        number: phone,
+        mediatype: "image",
+        mimetype: file.mimeType,
+        caption: caption ?? "",
+        media: file.data.toString("base64"),
+        fileName: `imagem.${ext}`,
+      }),
+    });
+    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { key?: { id?: string } };
+    return { waMessageId: data.key?.id };
+  }
+
   async downloadMedia(msg: IncomingMessage): Promise<MediaFile | null> {
     if (!msg.mediaRef) return null;
     const res = await fetch(`${this.baseUrl}/chat/getBase64FromMediaMessage/${this.instance}`, {

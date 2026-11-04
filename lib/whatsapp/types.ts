@@ -20,6 +20,8 @@ export interface WhatsAppProvider {
   /** Extrai as mensagens recebidas de clientes (ignora as enviadas por nós). */
   parseWebhook(payload: unknown): IncomingMessage[];
   sendText(phone: string, text: string): Promise<{ waMessageId?: string }>;
+  /** Envia uma foto (com legenda opcional). */
+  sendImage(phone: string, file: MediaFile, caption?: string): Promise<{ waMessageId?: string }>;
   /** Baixa o arquivo de uma mensagem com mídia. */
   downloadMedia(msg: IncomingMessage): Promise<MediaFile | null>;
   /** Nome de um grupo (só na conexão por QR Code). */

@@ -984,6 +984,32 @@ function Chat({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Foto para enviar: colada com Ctrl+V (recorte de tela) ou escolhida no 📎.
+  const [foto, setFoto] = useState<{ file: File; url: string } | null>(null);
+  const fotoInput = useRef<HTMLInputElement>(null);
+  function escolherFoto(file: File | null | undefined) {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return setError("Só dá para enviar foto (PNG, JPG, WEBP ou GIF).");
+    if (file.size > 10 * 1024 * 1024) return setError("Imagem muito grande (máximo 10 MB).");
+    setError("");
+    setFoto((f) => {
+      if (f) URL.revokeObjectURL(f.url);
+      return { file, url: URL.createObjectURL(file) };
+    });
+  }
+  function tirarFoto() {
+    setFoto((f) => {
+      if (f) URL.revokeObjectURL(f.url);
+      return null;
+    });
+  }
+  useEffect(() => tirarFoto, [c.id]);
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const item = Array.from(e.clipboardData.items).find((i) => i.kind === "file" && i.type.startsWith("image/"));
+    if (!item) return; // texto: cola normal
+    e.preventDefault();
+    escolherFoto(item.getAsFile());
+  }
   const [qrIndex, setQrIndex] = useState(0);
   const [pdOpen, setPdOpen] = useState(false);
   const [acoes, setAcoes] = useState(false);
@@ -1042,12 +1068,24 @@ function Chat({
 
   async function send() {
     const body = text.trim();
-    if (!body || sending) return;
+    if ((!body && !foto) || sending) return;
     setSending(true);
     setError("");
     try {
-      await api(`/api/conversations/${c.id}/messages`, { method: "POST", body: JSON.stringify({ body }) });
+      const image = foto
+        ? {
+            mimeType: foto.file.type,
+            data: await new Promise<string>((ok, fail) => {
+              const r = new FileReader();
+              r.onload = () => ok(String(r.result).split(",")[1] ?? "");
+              r.onerror = () => fail(new Error("Não consegui ler a imagem"));
+              r.readAsDataURL(foto.file);
+            }),
+          }
+        : undefined;
+      await api(`/api/conversations/${c.id}/messages`, { method: "POST", body: JSON.stringify({ body, image }) });
       setText("");
+      tirarFoto();
       await onSent();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao enviar");
@@ -1413,17 +1451,38 @@ function Chat({
           >
             ⚡
           </button>
+          <button type="button" className="qr-btn" title="Enviar foto (ou cole um recorte de tela com Ctrl+V)" aria-label="Enviar foto" onClick={() => fotoInput.current?.click()}>
+            📎
+          </button>
+          <input
+            ref={fotoInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+            onChange={(e) => {
+              escolherFoto(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          {foto && (
+            <div className="foto-pre">
+              <img src={foto.url} alt="Foto para enviar" />
+              <span className="muted">Foto pronta. Escreva uma legenda se quiser e clique em Enviar.</span>
+              <button type="button" onClick={tirarFoto} aria-label="Tirar foto">×</button>
+            </div>
+          )}
           <textarea
             value={text}
-            placeholder={c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
+            placeholder={foto ? "Legenda da foto (opcional)" : c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
             onChange={(e) => {
               setText(e.target.value);
               setQrIndex(0);
             }}
             onKeyDown={onKey}
+            onPaste={onPaste}
             rows={1}
           />
-          <button className="primary" onClick={send} disabled={sending || !text.trim()}>
+          <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto)}>
             Enviar
           </button>
           {error && <div style={{ color: "var(--danger)", position: "absolute", bottom: 2, left: 12, fontSize: 12 }}>{error}</div>}
