@@ -62,7 +62,54 @@ export async function updateConnection(
 }
 
 export async function deleteConnection(id: string) {
-  check(await supabaseAdmin().from("whatsapp_connections").delete().eq("id", id));
+  const db = supabaseAdmin();
+  // Antes de apagar o card, guarda quais conversas eram deste número: se o mesmo celular for
+  // conectado de novo (card novo), elas voltam para ele em vez de ficarem soltas, sem número.
+  const conn = await getConnection(id);
+  const phone = conn?.phone?.replace(/\D/g, "");
+  if (phone) {
+    const ids: string[] = [];
+    for (let de = 0; ; de += 1000) {
+      const { data } = await db.from("conversations").select("id").eq("connection_id", id).range(de, de + 999);
+      ids.push(...(data ?? []).map((c) => c.id as string));
+      if (!data || data.length < 1000) break;
+    }
+    if (ids.length) {
+      const chave = `conversas_soltas_${phone}`;
+      const { data: atual } = await db.from("settings").select("value").eq("key", chave).maybeSingle();
+      const antes = Array.isArray(atual?.value) ? (atual.value as string[]) : [];
+      check(await db.from("settings").upsert({ key: chave, value: [...new Set([...antes, ...ids])] }));
+    }
+  }
+  check(await db.from("whatsapp_connections").delete().eq("id", id));
+}
+
+const religados = new Map<string, number>();
+
+/**
+ * Número conectado num card novo: traz de volta as conversas que eram dele num card apagado.
+ * Roda no máximo uma vez a cada 10 minutos por número.
+ */
+export async function religarConversas(conn: Pick<Connection, "id" | "phone">) {
+  const phone = conn.phone?.replace(/\D/g, "");
+  if (!phone || Date.now() - (religados.get(phone) ?? 0) < 10 * 60_000) return 0;
+  religados.set(phone, Date.now());
+  const db = supabaseAdmin();
+  const chave = `conversas_soltas_${phone}`;
+  const { data: atual } = await db.from("settings").select("value").eq("key", chave).maybeSingle();
+  const ids = Array.isArray(atual?.value) ? (atual.value as string[]) : [];
+  let n = 0;
+  for (let i = 0; i < ids.length; i += 200) {
+    const { count } = await db
+      .from("conversations")
+      .update({ connection_id: conn.id }, { count: "exact" })
+      .in("id", ids.slice(i, i + 200))
+      .is("connection_id", null);
+    n += count ?? 0;
+  }
+  if (ids.length) await db.from("settings").delete().eq("key", chave);
+  if (n) console.log(`Conversas religadas ao número ${phone}: ${n}`);
+  return n;
 }
 
 /**
@@ -83,7 +130,8 @@ export async function syncState(conn: Connection): Promise<Connection & { state:
   if (state === "open" && (!conn.connected_at || !conn.phone)) {
     const phone = (await evolution.ownerPhone().catch(() => null)) ?? conn.phone;
     next = await updateConnection(conn.id, { phone, connected_at: conn.connected_at ?? new Date().toISOString() });
-  } else if ((state === "close" || state === "missing") && conn.connected_at) {
+  }
+  if (state === "open") await religarConversas(next).catch((e) => console.error("religar conversas", e)); else if ((state === "close" || state === "missing") && conn.connected_at) {
     next = await updateConnection(conn.id, { connected_at: null });
   }
   return { ...next, state };

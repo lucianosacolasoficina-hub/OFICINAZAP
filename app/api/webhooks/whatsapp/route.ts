@@ -2,7 +2,7 @@ import { after, NextResponse } from "next/server";
 import { handleIncoming } from "@/lib/inbound";
 import { whatsapp } from "@/lib/whatsapp";
 import { EvolutionProvider } from "@/lib/whatsapp/evolution";
-import { connectionByInstance, updateConnection } from "@/lib/connections";
+import { connectionByInstance, religarConversas, updateConnection } from "@/lib/connections";
 import { importarMensagens, registrarEnviada } from "@/lib/historico";
 import { completarLid } from "@/lib/recuperar";
 
@@ -44,6 +44,8 @@ export async function POST(req: Request) {
             ...(conexao.phone && { phone: conexao.phone }),
           });
         }
+        // Antes do histórico chegar: as conversas de um card antigo deste celular voltam para ele.
+        if (conn) await religarConversas({ id: conn.id, phone: conexao.phone ?? conn.phone });
       } catch (err) {
         console.error("Erro ao marcar número conectado", err);
       }
@@ -65,6 +67,7 @@ export async function POST(req: Request) {
     after(async () => {
       try {
         const conn = await connectionByInstance(hist.instance ?? instance ?? "");
+        if (conn) await religarConversas(conn).catch(() => 0);
         if (conn) await importarMensagens(conn, hist.msgs);
       } catch (err) {
         console.error("Erro ao importar histórico", err);
