@@ -131,7 +131,7 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
     try {
       sent = await whatsapp(instance).sendText(contact.phone, result.reply);
     } catch (err) {
-      // Trava de envio (número pausado, limite, mensagem repetida) ou falha da Evolution: um atendente assume.
+      // Trava de envio (envio em massa, mensagem repetida) ou falha da Evolution: um atendente assume.
       await pararRobo(conversation.id, `IA não enviou a resposta: ${err instanceof Error ? err.message : "falha no envio"}`);
       return;
     }
