@@ -29,6 +29,13 @@ type ConvRow = Conversation & {
 type NumStats = { todas: number; pendentes: number; abertas: number; robo: number };
 type Detail = { conversation: ConvRow; messages: Message[]; quote: QuoteData | null };
 type QuickReply = { id: string; shortcut: string; body: string };
+/** Mensagem pronta deixada pelo sistema de gestão (proposta, pedido, cobrança…), com ou sem arquivo. */
+type RascunhoUI = { id: string; texto: string; tel: string; nome: string; arquivo: { nome: string; mimeType: string; tamanho: number; url: string | null } | null };
+const ANEXO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf,.xlsx,.xls,.docx,.csv";
+const ANEXO_DOC = /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/csv)$/;
+function fmtKb(n: number) {
+  return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+}
 type Summary = {
   views: Record<string, number>;
   queues: Record<string, number>;
@@ -143,6 +150,28 @@ export default function InboxPage() {
   const [filterPop, setFilterPop] = useState(false);
   const [newChat, setNewChat] = useState(false);
   const [novoIni, setNovoIni] = useState<{ phone: string; name: string } | null>(null);
+  // Rascunho vindo do sistema de gestão (/?r=<id>): texto + PDF prontos, só para conferir e enviar.
+  const [rascunho, setRascunho] = useState<RascunhoUI | null>(null);
+  const rascunhoFim = useCallback(() => {
+    setRascunho(null);
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.has("r")) {
+        u.searchParams.delete("r");
+        window.history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("r");
+    if (!r) return;
+    api<RascunhoUI>(`/api/rascunhos/${encodeURIComponent(r)}`)
+      .then(setRascunho)
+      .catch((e) => {
+        alert("Não foi possível abrir a mensagem enviada pelo sistema: " + (e instanceof Error ? e.message : "erro") + "\n\nGere de novo no sistema.");
+        rascunhoFim();
+      });
+  }, [rascunhoFim]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [list, setList] = useState<ConvRow[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -628,6 +657,8 @@ export default function InboxPage() {
             onToggleHist={() => { setHistOpen(!histOpen); if (!histOpen) setInfoOpen(false); }}
             histOpen={histOpen}
             onDelete={() => { setSelected(null); refresh(); }}
+            rascunho={rascunho}
+            onRascunhoFim={rascunhoFim}
           />
           {histOpen && (
             <div className="side-wrap hp-wrap">
@@ -668,11 +699,13 @@ export default function InboxPage() {
       {newChat && (
         <NewChatModal
           inicial={novoIni}
+          rascunho={rascunho}
           connections={summary?.connections ?? []}
           onClose={() => setNewChat(false)}
-          onCreated={async (id) => {
+          onCreated={async (id, enviouRascunho) => {
             setNewChat(false);
             setSelected(id);
+            if (enviouRascunho) rascunhoFim();
             await Promise.all([loadList(), loadSummary()]);
           }}
         />
@@ -872,21 +905,30 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
 
 function NewChatModal({
   inicial,
+  rascunho,
   connections,
   onClose,
   onCreated,
 }: {
   inicial?: { phone: string; name: string } | null;
+  rascunho?: RascunhoUI | null;
   connections: Summary["connections"];
   onClose: () => void;
-  onCreated: (id: string) => Promise<void>;
+  onCreated: (id: string, enviouRascunho: boolean) => Promise<void>;
 }) {
-  const [phone, setPhone] = useState(inicial?.phone ?? "");
-  const [name, setName] = useState(inicial?.name ?? "");
+  const [phone, setPhone] = useState(inicial?.phone ?? rascunho?.tel ?? "");
+  const [name, setName] = useState(inicial?.name ?? rascunho?.nome ?? "");
   const [connectionId, setConnectionId] = useState(connections.find((c) => c.connected_at)?.id ?? connections[0]?.id ?? "");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(rascunho?.texto ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Mensagem vinda do sistema de gestão: o texto já vem preenchido e o arquivo (PDF) vai junto.
+  useEffect(() => {
+    if (!rascunho) return;
+    setMessage((m) => m || rascunho.texto);
+    setPhone((p) => p || rascunho.tel);
+    setName((n) => n || rascunho.nome);
+  }, [rascunho]);
 
   async function start(e: React.FormEvent) {
     e.preventDefault();
@@ -897,10 +939,10 @@ function NewChatModal({
         method: "POST",
         body: JSON.stringify({ phone, name, connection_id: connectionId || null }),
       });
-      if (message.trim()) {
-        await api(`/api/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ body: message.trim() }) });
+      if (message.trim() || rascunho) {
+        await api(`/api/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ body: message.trim(), ...(rascunho && { rascunho: rascunho.id }) }) });
       }
-      await onCreated(id);
+      await onCreated(id, !!rascunho);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao iniciar conversa");
       setBusy(false);
@@ -932,9 +974,17 @@ function NewChatModal({
             </select>
           </label>
         )}
+        {rascunho?.arquivo && (
+          <div className="rasc-chip">
+            📄 <b>{rascunho.arquivo.nome}</b> <span className="muted">({fmtKb(rascunho.arquivo.tamanho)}) vai junto com a mensagem</span>
+            {rascunho.arquivo.url && (
+              <a href={rascunho.arquivo.url} target="_blank" rel="noreferrer">ver</a>
+            )}
+          </div>
+        )}
         <label>
           Primeira mensagem
-          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="Olá! Aqui é da Sacolas Oficina..." />
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={rascunho ? 6 : 3} placeholder="Olá! Aqui é da Sacolas Oficina..." />
         </label>
         {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -962,6 +1012,8 @@ function Chat({
   onToggleHist,
   histOpen,
   onDelete,
+  rascunho,
+  onRascunhoFim,
 }: {
   detail: Detail;
   quickReplies: QuickReply[];
@@ -978,23 +1030,27 @@ function Chat({
   onToggleHist?: () => void;
   histOpen?: boolean;
   onDelete?: () => void;
+  rascunho?: RascunhoUI | null;
+  onRascunhoFim?: () => void;
 }) {
   const { conversation: c, messages } = detail;
   const me = useMe();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  // Foto para enviar: colada com Ctrl+V (recorte de tela) ou escolhida no 📎.
-  const [foto, setFoto] = useState<{ file: File; url: string } | null>(null);
+  // Foto ou arquivo para enviar: colado com Ctrl+V (recorte de tela) ou escolhido no 📎.
+  const [foto, setFoto] = useState<{ file: File; url: string; doc: boolean } | null>(null);
   const fotoInput = useRef<HTMLInputElement>(null);
   function escolherFoto(file: File | null | undefined) {
     if (!file) return;
-    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return setError("Só dá para enviar foto (PNG, JPG, WEBP ou GIF).");
-    if (file.size > 10 * 1024 * 1024) return setError("Imagem muito grande (máximo 10 MB).");
+    const img = /^image\/(png|jpeg|webp|gif)$/.test(file.type);
+    const doc = !img && (ANEXO_DOC.test(file.type) || /\.(pdf|xlsx|xls|docx|csv)$/i.test(file.name));
+    if (!img && !doc) return setError("Só dá para enviar foto (PNG, JPG, WEBP, GIF) ou arquivo (PDF, Excel, Word, CSV).");
+    if (file.size > (img ? 10 : 15) * 1024 * 1024) return setError(img ? "Imagem muito grande (máximo 10 MB)." : "Arquivo muito grande (máximo 15 MB).");
     setError("");
     setFoto((f) => {
       if (f) URL.revokeObjectURL(f.url);
-      return { file, url: URL.createObjectURL(file) };
+      return { file, url: URL.createObjectURL(file), doc };
     });
   }
   function tirarFoto() {
@@ -1004,6 +1060,18 @@ function Chat({
     });
   }
   useEffect(() => tirarFoto, [c.id]);
+  // Mensagem pronta vinda do sistema de gestão: o texto entra na caixa e o arquivo fica anexado, só conferir e Enviar.
+  const rascId = rascunho?.id;
+  useEffect(() => {
+    if (rascunho) setText(rascunho.texto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rascId]);
+  async function descartarRascunho() {
+    if (!rascunho) return;
+    await api(`/api/rascunhos/${rascunho.id}`, { method: "DELETE" }).catch(() => {});
+    setText("");
+    onRascunhoFim?.();
+  }
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const item = Array.from(e.clipboardData.items).find((i) => i.kind === "file" && i.type.startsWith("image/"));
     if (!item) return; // texto: cola normal
@@ -1068,24 +1136,32 @@ function Chat({
 
   async function send() {
     const body = text.trim();
-    if ((!body && !foto) || sending) return;
+    if ((!body && !foto && !rascunho) || sending) return;
     setSending(true);
     setError("");
     try {
-      const image = foto
+      const anexo = foto
         ? {
-            mimeType: foto.file.type,
+            mimeType: foto.file.type || "application/octet-stream",
+            name: foto.file.name,
             data: await new Promise<string>((ok, fail) => {
               const r = new FileReader();
               r.onload = () => ok(String(r.result).split(",")[1] ?? "");
-              r.onerror = () => fail(new Error("Não consegui ler a imagem"));
+              r.onerror = () => fail(new Error("Não consegui ler o arquivo"));
               r.readAsDataURL(foto.file);
             }),
           }
         : undefined;
-      await api(`/api/conversations/${c.id}/messages`, { method: "POST", body: JSON.stringify({ body, image }) });
+      const payload = {
+        body,
+        ...(anexo && !foto!.doc && { image: anexo }),
+        ...(anexo && foto!.doc && { document: anexo }),
+        ...(rascunho && !foto && { rascunho: rascunho.id }),
+      };
+      await api(`/api/conversations/${c.id}/messages`, { method: "POST", body: JSON.stringify(payload) });
       setText("");
       tirarFoto();
+      if (rascunho && !foto) onRascunhoFim?.();
       await onSent();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao enviar");
@@ -1451,13 +1527,13 @@ function Chat({
           >
             ⚡
           </button>
-          <button type="button" className="qr-btn" title="Enviar foto (ou cole um recorte de tela com Ctrl+V)" aria-label="Enviar foto" onClick={() => fotoInput.current?.click()}>
+          <button type="button" className="qr-btn" title="Enviar foto ou arquivo (PDF, Excel…) — ou cole um recorte de tela com Ctrl+V" aria-label="Enviar foto ou arquivo" onClick={() => fotoInput.current?.click()}>
             📎
           </button>
           <input
             ref={fotoInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
+            accept={ANEXO_ACCEPT}
             hidden
             onChange={(e) => {
               escolherFoto(e.target.files?.[0]);
@@ -1466,23 +1542,43 @@ function Chat({
           />
           {foto && (
             <div className="foto-pre">
-              <img src={foto.url} alt="Foto para enviar" />
-              <span className="muted">Foto pronta. Escreva uma legenda se quiser e clique em Enviar.</span>
-              <button type="button" onClick={tirarFoto} aria-label="Tirar foto">×</button>
+              {foto.doc ? <span className="doc-ico">📄</span> : <img src={foto.url} alt="Foto para enviar" />}
+              <span className="muted">
+                {foto.doc ? <><b>{foto.file.name}</b> ({fmtKb(foto.file.size)}) pronto. Escreva uma mensagem se quiser e clique em Enviar.</> : "Foto pronta. Escreva uma legenda se quiser e clique em Enviar."}
+              </span>
+              <button type="button" onClick={tirarFoto} aria-label="Tirar anexo">×</button>
+            </div>
+          )}
+          {!foto && rascunho && (
+            <div className="foto-pre rasc">
+              <span className="doc-ico">{rascunho.arquivo ? "📄" : "💬"}</span>
+              <span>
+                {rascunho.arquivo ? (
+                  <>
+                    <b>{rascunho.arquivo.nome}</b> <span className="muted">({fmtKb(rascunho.arquivo.tamanho)})</span>
+                    {rascunho.arquivo.url && (
+                      <> · <a href={rascunho.arquivo.url} target="_blank" rel="noreferrer">ver</a></>
+                    )}
+                    <br />
+                  </>
+                ) : null}
+                <span className="muted">Mensagem pronta vinda do sistema. Confira o texto e clique em <b>Enviar</b>.</span>
+              </span>
+              <button type="button" onClick={descartarRascunho} aria-label="Descartar mensagem do sistema" title="Descartar">×</button>
             </div>
           )}
           <textarea
             value={text}
-            placeholder={foto ? "Legenda da foto (opcional)" : c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
+            placeholder={foto ? (foto.doc ? "Mensagem junto com o arquivo (opcional)" : "Legenda da foto (opcional)") : c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
             onChange={(e) => {
               setText(e.target.value);
               setQrIndex(0);
             }}
             onKeyDown={onKey}
             onPaste={onPaste}
-            rows={1}
+            rows={rascunho && !foto ? Math.min(8, Math.max(2, text.split("\n").length)) : 1}
           />
-          <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto)}>
+          <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto && !rascunho?.arquivo)}>
             Enviar
           </button>
           {error && <div style={{ color: "var(--danger)", position: "absolute", bottom: 2, left: 12, fontSize: 12 }}>{error}</div>}

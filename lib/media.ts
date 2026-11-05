@@ -13,6 +13,10 @@ const EXT: Record<string, string> = {
   "audio/mpeg": "mp3",
   "video/mp4": "mp4",
   "application/pdf": "pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "text/csv": "csv",
 };
 
 /** Guarda o arquivo no Supabase Storage e devolve o caminho. */

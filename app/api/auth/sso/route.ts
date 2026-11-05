@@ -17,6 +17,8 @@ export async function POST(req: Request) {
   const v = String(form?.get("v") ?? "").replace(/[^a-z]/g, "").slice(0, 20);
   const tel = String(form?.get("tel") ?? "").replace(/\D/g, "").slice(0, 15);
   const nome = String(form?.get("nome") ?? "").slice(0, 80);
+  // Rascunho (texto + PDF) que o sistema deixou em /api/rascunhos para enviar nesta conversa.
+  const rasc = String(form?.get("r") ?? "").replace(/[^0-9a-f-]/g, "").slice(0, 36);
   if (!token) return volta(req, "sessao");
 
   const r = await fetch(`${url.replace(/\/+$/, "")}/auth/v1/user`, {
@@ -40,6 +42,8 @@ export async function POST(req: Request) {
   const supabase = await supabaseServer();
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (e2) return volta(req, "indisponivel");
-  const destino = tel ? `/abrir?${new URLSearchParams({ tel, nome })}` : v ? `/?v=${v}` : "/";
+  const abrir = new URLSearchParams({ tel, nome });
+  if (rasc) abrir.set("r", rasc);
+  const destino = tel || rasc ? `/abrir?${abrir}` : v ? `/?v=${v}` : "/";
   return NextResponse.redirect(publicUrl(req, destino), { status: 303 });
 }

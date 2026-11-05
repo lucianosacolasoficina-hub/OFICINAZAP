@@ -22,6 +22,8 @@ export interface WhatsAppProvider {
   sendText(phone: string, text: string): Promise<{ waMessageId?: string }>;
   /** Envia uma foto (com legenda opcional). */
   sendImage(phone: string, file: MediaFile, caption?: string): Promise<{ waMessageId?: string }>;
+  /** Envia um arquivo (PDF, Excel…) com o nome que o cliente verá e legenda opcional. */
+  sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string): Promise<{ waMessageId?: string }>;
   /** Baixa o arquivo de uma mensagem com mídia. */
   downloadMedia(msg: IncomingMessage): Promise<MediaFile | null>;
   /** Nome de um grupo (só na conexão por QR Code). */

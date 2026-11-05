@@ -101,6 +101,25 @@ export class MetaProvider implements WhatsAppProvider {
     return { waMessageId: data.messages?.[0]?.id };
   }
 
+  async sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string) {
+    const auth = { Authorization: `Bearer ${this.token}` };
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", file.mimeType);
+    form.append("file", new Blob([new Uint8Array(file.data)], { type: file.mimeType }), fileName);
+    const up = await fetch(`${GRAPH_URL}/${this.phoneNumberId}/media`, { method: "POST", headers: auth, body: form });
+    if (!up.ok) throw new Error(`Meta API ${up.status}: ${await up.text()}`);
+    const { id } = (await up.json()) as { id?: string };
+    const res = await fetch(`${GRAPH_URL}/${this.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...auth },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: phone, type: "document", document: { id, filename: fileName, ...(caption && { caption }) } }),
+    });
+    if (!res.ok) throw new Error(`Meta API ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { messages?: { id?: string }[] };
+    return { waMessageId: data.messages?.[0]?.id };
+  }
+
   async downloadMedia(msg: IncomingMessage): Promise<MediaFile | null> {
     if (!msg.mediaRef) return null;
     const auth = { Authorization: `Bearer ${this.token}` };

@@ -858,3 +858,8 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .composer .foto-pre img{max-height:120px;max-width:180px;border-radius:8px;object-fit:contain;background:#f3f4f6}
 .composer .foto-pre span{flex:1;font-size:13px}
 .composer .foto-pre button{border:none;background:none;font-size:22px;cursor:pointer;line-height:1}
+/* Mensagem pronta vinda do sistema de gestão (rascunho) e arquivos anexados no 📎 */
+.composer .foto-pre .doc-ico{font-size:30px;line-height:1;padding:4px 6px}
+.composer .foto-pre.rasc{border-color:#25d366;background:color-mix(in srgb,#25d366 10%,var(--panel))}
+.composer .foto-pre.rasc a,.rasc-chip a{color:var(--accent,#128c7e);font-weight:600}
+.rasc-chip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border:1px solid #25d366;border-radius:10px;background:color-mix(in srgb,#25d366 10%,var(--panel));font-size:13px}
