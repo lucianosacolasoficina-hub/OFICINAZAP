@@ -1544,7 +1544,10 @@ function Chat({
       )}
 
       {c.status === "closed" ? (
-        <div className="composer muted">Conversa encerrada. Se o cliente escrever de novo, uma nova conversa é aberta.</div>
+        <div className="composer muted" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span>Conversa encerrada.</span>
+          <button className="primary" onClick={() => onStatus("open")}>↩ Reabrir e responder</button>
+        </div>
       ) : (
         <div className="composer">
           {qrMatches.length > 0 && (

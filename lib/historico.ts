@@ -22,15 +22,18 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
     const ult = lista[lista.length - 1];
     const nome = lista.find((m) => !m.fromMe && m.name)?.name;
     const contato = ult.isGroup ? await upsertGroup(ult.phone) : await upsertContact(ult.phone, nome);
-    // Usa a conversa mais recente desse cliente neste número; se não houver, cria uma.
-    const { data: existente } = await db
+    // Usa a conversa em andamento desse cliente neste número (a mesma em que o cliente escreve);
+    // só se não houver nenhuma, a mais recente (mesmo encerrada); se não houver nenhuma, cria uma.
+    // Antes pegava sempre a mais nova: uma cópia encerrada criada depois "roubava" as mensagens
+    // enviadas pelo celular e a conversa aparecia como encerrada no meio do atendimento.
+    const { data: candidatas } = await db
       .from("conversations")
       .select("id, last_message_at, status")
       .eq("contact_id", contato.id)
       .eq("connection_id", conn.id)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(20);
+    const existente = (candidatas ?? []).find((c) => c.status !== "closed") ?? (candidatas ?? [])[0];
     const ultIso = new Date(ult.ts * 1000).toISOString();
     const recente = !ult.fromMe && !ult.isGroup && Date.now() - ult.ts * 1000 < 2 * 864e5;
     let convId = existente?.id as string | undefined;
