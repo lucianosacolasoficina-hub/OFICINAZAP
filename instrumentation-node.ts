@@ -3,6 +3,7 @@ import { sincronizarTodos } from "./lib/email";
 import { sincronizarTodosImap } from "./lib/emailImap";
 import { sincronizarGoogle } from "./lib/googleSync";
 import { preencherFotos } from "./lib/fotos";
+import { recuperarPerdidas } from "./lib/recuperar";
 
 setInterval(() => {
   sincronizarTodos().catch((e) => console.error("sync e-mail", e));
@@ -18,3 +19,12 @@ setInterval(() => {
 setInterval(() => {
   preencherFotos(25).catch((e) => console.error("fotos dos contatos", e));
 }, 60_000);
+
+// Mensagens do WhatsApp que não chegaram pelo webhook (reinício, queda, número oculto): confere a cada 2 minutos.
+// Ao subir, olha as últimas 12 horas para trazer o que se perdeu enquanto estava fora.
+setTimeout(() => {
+  recuperarPerdidas(12 * 3600).catch((e) => console.error("recuperar mensagens", e));
+}, 30_000);
+setInterval(() => {
+  recuperarPerdidas().catch((e) => console.error("recuperar mensagens", e));
+}, 2 * 60_000);

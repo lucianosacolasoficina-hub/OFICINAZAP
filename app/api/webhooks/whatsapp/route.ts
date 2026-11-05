@@ -4,6 +4,7 @@ import { whatsapp } from "@/lib/whatsapp";
 import { EvolutionProvider } from "@/lib/whatsapp/evolution";
 import { connectionByInstance } from "@/lib/connections";
 import { importarMensagens, registrarEnviada } from "@/lib/historico";
+import { completarLid } from "@/lib/recuperar";
 
 export const maxDuration = 60;
 
@@ -29,6 +30,10 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "json inválido" }, { status: 400 });
   }
+
+  // Contato com número oculto (@lid) e sem o número junto: completa com o número já conhecido.
+  const up = payload as { event?: string; data?: { key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string }; pushName?: string | null } };
+  if (up?.event === "messages.upsert" && up.data?.key) await completarLid(up.data.key, up.data);
 
   // Responde logo ao provedor e processa depois (a IA pode levar alguns segundos).
   // Com vários números, o webhook de cada um traz o nome da instância na URL (reserva, caso não venha no corpo).

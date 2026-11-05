@@ -110,7 +110,8 @@ export async function puxarHistorico(conn: Connection, dias: number) {
         await setSetting(chave, { ...andamento, status: "parado", fim: new Date().toISOString() });
         return;
       }
-      await new Promise((r) => setTimeout(r, 300));
+      // Devagar: a leitura pesa na Evolution (já derrubou o servidor por falta de memória).
+      await new Promise((r) => setTimeout(r, 1500));
       try {
         const msgs: HistMsg[] = [];
         for (let page = 1; page <= 100; page++) {
@@ -133,7 +134,7 @@ export async function puxarHistorico(conn: Connection, dias: number) {
             const { count } = await supabaseAdmin().from("messages").select("id", { count: "exact", head: true }).in("wa_message_id", ids);
             if ((count ?? 0) >= ids.length) break;
           }
-          await new Promise((r) => setTimeout(r, 400));
+          await new Promise((r) => setTimeout(r, 1500));
         }
         if (msgs.length) {
           const r = await importarMensagens(conn, msgs);
