@@ -872,3 +872,35 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .trava-aviso { position: fixed; top: 0; left: 0; right: 0; z-index: 900; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; padding: 8px 16px; background: #c0392b; color: #fff; font-size: 14px; }
 .trava-aviso a { color: #fff; font-weight: 700; text-decoration: underline; }
 .trava-aviso button { background: #fff; color: #c0392b; border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-weight: 600; }
+/* ===== Miniatura de PDF, figurinha e player de áudio nos balões ===== */
+.bubble img.media.sticker { max-width: 150px; background: none; }
+.pdf-mini { display: flex; flex-direction: column; width: min(260px, 100%); padding: 0; margin: 0 0 4px; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.04); cursor: zoom-in; text-align: left; font: inherit; color: inherit; }
+.pdf-mini-pg { display: block; background: #fff; max-height: 300px; overflow: hidden; }
+.pdf-mini-pg img { display: block; width: 100%; height: auto; }
+.pdf-mini-ph { display: flex; align-items: center; justify-content: center; height: 150px; color: #54656f; font-size: 13px; }
+.pdf-mini-nome { display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0; }
+.pdf-mini-nome b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.pdf-mini-nome small { color: #667781; font-size: 12px; white-space: nowrap; }
+.pdf-tag { background: #e53935; color: #fff; font-size: 10px; font-weight: 800; padding: 3px 5px; border-radius: 4px; flex: none; }
+.foto-pre .pdf-mini { width: 72px; margin: 0; flex: none; }
+.foto-pre .pdf-mini .pdf-mini-pg { max-height: 90px; }
+.foto-pre .pdf-mini .pdf-mini-ph { height: 72px; font-size: 18px; }
+.foto-pre .pdf-mini .pdf-mini-nome { display: none; }
+.zoom-pdf { justify-content: flex-start; overflow-y: auto; padding-top: 16px; }
+.zoom-pdf .zoom-acts { position: sticky; top: 0; z-index: 1; flex-wrap: wrap; justify-content: center; }
+.pdf-zoom { cursor: default; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.pdf-zoom-pgs { display: flex; flex-direction: column; gap: 12px; }
+.pdf-zoom-pgs canvas { display: block; max-width: calc(100vw - 40px); height: auto; background: #fff; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.pdf-zoom-msg { color: #fff; font-weight: 600; margin: 20px 0; }
+.aud { display: flex; align-items: center; gap: 10px; width: min(300px, 68vw); padding: 4px 2px 2px; }
+.aud audio { display: none; }
+.aud-play { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: #00a884; color: #fff; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.aud-play:disabled { background: #b8c4ca; cursor: default; }
+.aud-meio { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.aud-meio input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 99px; outline: none; margin: 8px 0 0; padding: 0; border: 0; cursor: pointer; }
+.aud-meio input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #00a884; border: 0; }
+.aud-meio input[type=range]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #00a884; border: 0; }
+.aud-meio small { color: #667781; font-size: 11.5px; }
+.aud-vel { flex: none; border: 0; background: rgba(0,0,0,.08); color: #3b4a54; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 4px 8px; cursor: pointer; }
+.aud.erro .aud-meio small { color: #b42318; }
+.bubble .aud + .meta-sp, .bubble .pdf-mini + .meta-sp, .bubble .media-btn + .meta-sp { display: block; height: 12px; }
