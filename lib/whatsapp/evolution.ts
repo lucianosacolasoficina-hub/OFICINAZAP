@@ -385,9 +385,43 @@ export class EvolutionProvider implements WhatsAppProvider {
       body: JSON.stringify({ message: { key: { id: msg.mediaRef } }, convertToMp4: false }),
     });
     if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { base64?: string; mimetype?: string };
+    // Arquivo grande demais (vídeo longo, por exemplo) não é guardado de qualquer jeito (limite de 15 MB):
+    // para de ler no meio, em vez de carregar tudo na memória e derrubar o servidor.
+    const texto = await lerAte(res, MAX_RESPOSTA_MIDIA);
+    if (texto === null) {
+      console.warn("Mídia grande demais, não foi baixada", msg.waMessageId);
+      return null;
+    }
+    const data = JSON.parse(texto) as { base64?: string; mimetype?: string };
     if (!data.base64) return null;
     return { data: Buffer.from(data.base64, "base64"), mimeType: data.mimetype?.split(";")[0] || "application/octet-stream" };
   }
+}
+
+// 15 MB de arquivo viram ~20 MB em base64; com folga para o resto da resposta.
+const MAX_RESPOSTA_MIDIA = 21 * 1024 * 1024;
+
+/** Lê a resposta até `max` bytes; se passar disso, cancela e devolve null. */
+async function lerAte(res: Response, max: number): Promise<string | null> {
+  const tam = Number(res.headers.get("content-length") ?? 0);
+  if (tam > max) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!res.body) return await res.text();
+  const reader = res.body.getReader();
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    partes.push(value);
+  }
+  return Buffer.concat(partes).toString("utf8");
 }
 
