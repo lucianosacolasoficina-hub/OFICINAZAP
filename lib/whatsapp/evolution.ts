@@ -54,9 +54,11 @@ export class EvolutionProvider implements WhatsAppProvider {
     this.baseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, "") : `http://${baseUrl}`;
   }
 
-  private async call<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
+  private async call<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<{ status: number; data: T }> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
+      // Consultas rápidas têm prazo: se a Evolution estiver ocupada, a tela não fica minutos esperando.
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -73,6 +75,8 @@ export class EvolutionProvider implements WhatsAppProvider {
     const { status, data } = await this.call<{ instance?: { state?: string } }>(
       "GET",
       `/instance/connectionState/${this.instance}`,
+      undefined,
+      10000,
     );
     if (status === 404) return "missing";
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
@@ -84,6 +88,8 @@ export class EvolutionProvider implements WhatsAppProvider {
     const { status, data } = await this.call<{ ownerJid?: string | null; number?: string | null }[]>(
       "GET",
       `/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance)}`,
+      undefined,
+      10000,
     );
     if (status >= 400 || !Array.isArray(data) || !data[0]) return null;
     const jid = data[0].ownerJid ?? data[0].number ?? "";
@@ -114,7 +120,8 @@ export class EvolutionProvider implements WhatsAppProvider {
   /** Cria a instância se preciso, aponta o webhook para o sistema e devolve o QR Code (imagem base64). */
   async connect(webhookUrl: string, phone?: string): Promise<{ state: string; qr?: string; pairingCode?: string }> {
     // MESSAGES_SET: o WhatsApp manda as conversas antigas logo depois de conectar (histórico).
-    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT", "MESSAGES_SET"] };
+    // CONNECTION_UPDATE: avisa o sistema na hora em que o celular termina de conectar.
+    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT", "MESSAGES_SET", "CONNECTION_UPDATE"] };
     let state = await this.connectionState();
     if (state === "missing") {
       const created = await this.call<{ qrcode?: { base64?: string } }>("POST", "/instance/create", {
@@ -136,6 +143,26 @@ export class EvolutionProvider implements WhatsAppProvider {
     const { status, data } = await this.call<{ base64?: string; pairingCode?: string | null }>("GET", `/instance/connect/${this.instance}${q}`);
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
     return { state, qr: data.base64, pairingCode: data.pairingCode ?? undefined };
+  }
+
+  /**
+   * Só busca o QR Code atual (para renovar a imagem na tela), sem mexer no webhook nem criar nada.
+   * Se o número já conectou, devolve state "open" e nenhum QR Code.
+   */
+  async currentQr(): Promise<{ state: string; qr?: string }> {
+    const state = await this.connectionState();
+    if (state === "open" || state === "missing") return { state };
+    const { status, data } = await this.call<{ base64?: string }>("GET", `/instance/connect/${this.instance}`, undefined, 15000);
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+    return { state, qr: data.base64 };
+  }
+
+  /** Aviso de conexão (connection.update) vindo pelo webhook: estado e número do celular. */
+  static parseConnectionUpdate(payload: unknown): { instance?: string; state: string; phone?: string } | null {
+    const body = payload as { event?: string; instance?: string; data?: { state?: string; wuid?: string } };
+    if (body?.event !== "connection.update" || !body.data?.state) return null;
+    const phone = body.data.wuid?.split("@")[0].split(":")[0] || undefined;
+    return { instance: body.instance, state: body.data.state, phone };
   }
 
   async verifyWebhook(req: Request) {

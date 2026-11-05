@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, formatPhone } from "@/lib/client";
 import { InstagramSetup } from "@/components/InstagramSetup";
 import { EmailSetup } from "@/components/EmailSetup";
@@ -22,7 +22,7 @@ const STATE_LABEL: Record<string, string> = {
   connecting: "Aguardando leitura do QR Code",
   close: "Desconectado",
   missing: "Ainda não conectado",
-  error: "Sem resposta do servidor do WhatsApp",
+  error: "Servidor do WhatsApp demorando para responder. Atualize a página em instantes.",
 };
 
 /**
@@ -37,22 +37,45 @@ function QrModal({ conn, onClose }: { conn: Connection; onClose: (connected: boo
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [geradoEm, setGeradoEm] = useState(0);
+  const [conectado, setConectado] = useState(false);
+  // Depois de conectado, nada mais pede QR Code nesta janela.
+  const fechado = useRef(false);
+  // Pedido de QR Code ainda sem resposta / conferência de conexão em andamento (desde quando).
+  const gerando = useRef(false);
+  const conferindoDesde = useRef(0);
 
-  const generate = (comNumero?: string) => {
-    setError("");
-    if (!comNumero) setQr(null);
+  const terminar = () => {
+    if (fechado.current) return;
+    fechado.current = true;
+    setConectado(true);
+    setTimeout(() => onClose(true), 1500);
+  };
+
+  /**
+   * renovar = troca automática da imagem (a cada 30 s). Ela é pulada quando o servidor ainda está
+   * respondendo: logo depois da leitura o WhatsApp fica alguns segundos sincronizando e um QR Code
+   * novo na tela faria a pessoa ler de novo sem precisar.
+   */
+  const generate = (comNumero?: string, renovar = false) => {
+    if (fechado.current) return;
+    if (renovar && (gerando.current || (conferindoDesde.current && Date.now() - conferindoDesde.current > 5000))) return;
+    gerando.current = true;
+    if (!renovar) setError("");
+    if (!comNumero && !renovar) setQr(null);
     api<{ state: string; qr?: string; pairingCode?: string }>(`/api/whatsapp/${conn.id}`, {
       method: "POST",
-      body: JSON.stringify({ action: "connect", phone: comNumero }),
+      body: JSON.stringify({ action: renovar ? "renovar" : "connect", phone: comNumero }),
     })
       .then((r) => {
-        if (r.state === "open") return onClose(true);
-        setQr(r.qr ?? null);
+        if (fechado.current) return;
+        if (r.state === "open") return terminar();
+        if (r.qr || !renovar) setQr(r.qr ?? null);
         if (comNumero) setCode(r.pairingCode ?? null);
         if (comNumero && !r.pairingCode) setError("O servidor não devolveu o código. Confira o número com DDD ou use o QR Code.");
-        setGeradoEm(Date.now());
+        if (!renovar) setGeradoEm(Date.now());
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => !renovar && setError(e.message))
+      .finally(() => (gerando.current = false));
   };
 
   useEffect(() => generate(), [conn.id]);
@@ -60,17 +83,47 @@ function QrModal({ conn, onClose }: { conn: Connection; onClose: (connected: boo
   // Renova o QR Code a cada 30 segundos enquanto a janela está aberta (no modo QR).
   useEffect(() => {
     if (modo !== "qr") return;
-    const t = setInterval(() => generate(), 30000);
+    const t = setInterval(() => generate(undefined, true), 30000);
     return () => clearInterval(t);
   }, [modo, conn.id]);
 
+  // Confere a conexão a cada 3 segundos, uma consulta por vez (sem acumular quando o servidor está lento).
   useEffect(() => {
     if (!geradoEm) return;
-    const t = setInterval(() => {
-      api<Connection>(`/api/whatsapp/${conn.id}`).then((r) => r.state === "open" && onClose(true)).catch(() => {});
-    }, 3000);
-    return () => clearInterval(t);
+    let vivo = true;
+    let t: ReturnType<typeof setTimeout>;
+    const conferir = () => {
+      conferindoDesde.current = Date.now();
+      api<Connection>(`/api/whatsapp/${conn.id}`)
+        .then((r) => {
+          if (r.state === "open" || r.connected_at) terminar();
+        })
+        .catch(() => {})
+        .finally(() => {
+          conferindoDesde.current = 0;
+          if (vivo && !fechado.current) t = setTimeout(conferir, 3000);
+        });
+    };
+    t = setTimeout(conferir, 3000);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
   }, [geradoEm]);
+
+  if (conectado) {
+    return (
+      <div className="modal-bg" onClick={() => onClose(true)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <strong>Conectar {conn.name}</strong>
+          <p style={{ fontSize: 18, margin: "18px 0" }}>✅ WhatsApp conectado! As conversas começam a chegar em instantes.</p>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button className="primary" onClick={() => onClose(true)}>Fechar</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-bg" onClick={() => onClose(false)}>
@@ -237,7 +290,7 @@ function ConnectionCard({
             ? `Conectado em ${new Date(conn.connected_at).toLocaleDateString("pt-BR")}`
             : STATE_LABEL[conn.state] ?? conn.state}
         </div>
-        {!connected && (
+        {!connected && conn.state !== "error" && (
           <button className="primary" style={{ marginTop: 6 }} onClick={onQr}>Ler QR Code</button>
         )}
         {connected && (

@@ -2,7 +2,7 @@ import { after, NextResponse } from "next/server";
 import { handleIncoming } from "@/lib/inbound";
 import { whatsapp } from "@/lib/whatsapp";
 import { EvolutionProvider } from "@/lib/whatsapp/evolution";
-import { connectionByInstance } from "@/lib/connections";
+import { connectionByInstance, updateConnection } from "@/lib/connections";
 import { importarMensagens, registrarEnviada } from "@/lib/historico";
 import { completarLid } from "@/lib/recuperar";
 
@@ -29,6 +29,26 @@ export async function POST(req: Request) {
     payload = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "json inválido" }, { status: 400 });
+  }
+
+  // Celular terminou de conectar (depois de ler o QR Code): marca o número como conectado na hora,
+  // para a janela do QR Code fechar sozinha mesmo que a Evolution esteja lenta para responder.
+  const conexao = EvolutionProvider.parseConnectionUpdate(payload);
+  if (conexao) {
+    if (conexao.state === "open") {
+      try {
+        const conn = await connectionByInstance(conexao.instance ?? new URL(req.url).searchParams.get("instance") ?? "");
+        if (conn && (!conn.connected_at || (conexao.phone && conn.phone !== conexao.phone))) {
+          await updateConnection(conn.id, {
+            connected_at: conn.connected_at ?? new Date().toISOString(),
+            ...(conexao.phone && { phone: conexao.phone }),
+          });
+        }
+      } catch (err) {
+        console.error("Erro ao marcar número conectado", err);
+      }
+    }
+    return NextResponse.json({ ok: true });
   }
 
   // Contato com número oculto (@lid) e sem o número junto: completa com o número já conhecido.

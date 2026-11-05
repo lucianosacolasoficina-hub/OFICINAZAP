@@ -31,6 +31,7 @@ export const PATCH = route<IdCtx>(async (req, { params }) => {
   });
 });
 
+// action "renovar": só a imagem nova do QR Code (a tela chama a cada 30 segundos).
 // action "connect": gera o QR Code (ou só religa o webhook se já está conectado).
 // action "logout": desconecta o celular, mas mantém o card para conectar de novo.
 export const POST = route<IdCtx>(async (req, { params }) => {
@@ -40,6 +41,12 @@ export const POST = route<IdCtx>(async (req, { params }) => {
   if (action === "logout") {
     await evolution.logout();
     return updateConnection(conn.id, { connected_at: null });
+  }
+  if (action === "renovar") {
+    // Renovação automática do QR Code na tela: só pega a imagem atual, sem recriar nada.
+    // Se o celular já conectou (o aviso chegou pelo webhook), não mostra QR Code de novo.
+    if (conn.connected_at) return { state: "open" };
+    return evolution.currentQr();
   }
   if (!process.env.WEBHOOK_SECRET) throw new HttpError(500, "WEBHOOK_SECRET não configurado");
   if (action === "restart") {
@@ -51,7 +58,10 @@ export const POST = route<IdCtx>(async (req, { params }) => {
   }
   const digits = (phone ?? "").replace(/\D/g, "");
   const num = digits ? (digits.length <= 11 ? "55" + digits : digits) : undefined;
-  return evolution.connect(webhookUrl(req, conn.instance), num);
+  const r = await evolution.connect(webhookUrl(req, conn.instance), num);
+  // Vai pedir QR Code: limpa a marca de "conectado" antiga, para a tela só fechar com a leitura nova.
+  if (r.state !== "open" && conn.connected_at) await updateConnection(conn.id, { connected_at: null });
+  return r;
 });
 
 // Remove o número: apaga a instância na Evolution API. As conversas antigas continuam no sistema.
