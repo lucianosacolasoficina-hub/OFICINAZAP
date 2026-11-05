@@ -130,29 +130,30 @@ export async function puxarHistorico(conn: Connection, dias: number) {
           await setSetting(chave, { ...andamento, status: "parado", fim: new Date().toISOString() });
           return;
         }
-        const { data, error } = await db.rpc("zap_historico_do_banco", {
-          p_instance: instancia, p_desde: desde, p_apos_ts: aposTs, p_apos_id: aposId, p_limite: 200,
+        const { data, error } = await db.rpc("zap_historico_lote", {
+          p_instance: instancia, p_desde: desde, p_apos_ts: aposTs, p_apos_id: aposId, p_limite: 300,
         });
         if (error) throw new Error(error.message);
-        const linhas = (data ?? []) as { ts: number; id: string; rec: Parameters<typeof EvolutionProvider.parseRecord>[0] }[];
+        const linhas = (data ?? []) as { ts: number; id: string; rec: Parameters<typeof EvolutionProvider.parseRecord>[0] | null }[];
         if (!linhas.length) break;
         aposTs = linhas[linhas.length - 1].ts;
         aposId = linhas[linhas.length - 1].id;
         const msgs: HistMsg[] = [];
         for (const { rec } of linhas) {
+          if (!rec) continue; // já está no OficinaZap
           // O nome que vem com o @lid às vezes é só o número do @lid: não serve como nome.
           if (rec.pushName && rec.pushName === rec.key?.remoteJid?.split("@")[0]) rec.pushName = null;
           const m = EvolutionProvider.parseRecord(rec);
           if (m) msgs.push(m);
         }
-        andamento.feitos += linhas.length;
+        andamento.feitos += linhas.filter((l) => l.rec).length;
         if (msgs.length) {
           const r = await importarMensagens(conn, msgs);
           andamento.conversas += r.conversas;
           andamento.mensagens += r.mensagens;
         }
         await setSetting(chave, andamento);
-        if (linhas.length < 200) break;
+        if (linhas.length < 300) break;
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
