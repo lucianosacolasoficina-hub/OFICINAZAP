@@ -587,8 +587,10 @@ export default function InboxPage() {
               </div>
             )}
           </div>
-          <button className="ib-icon-btn" title="Nova conversa" onClick={() => setNewChat(true)}>
-            <Icon name="plus" />
+          <button className="primary ib-novo" title="Cadastrar um contato novo e já começar a conversa no WhatsApp" onClick={() => { setNovoIni(null); setNewChat(true); }}>
+            <Icon name="plus" size={18} />
+            <span className="ib-novo-l">Novo contato</span>
+            <span className="ib-novo-s">Novo</span>
           </button>
         </div>
 
@@ -979,15 +981,27 @@ function NewChatModal({
   return (
     <div className="modal-bg" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={start}>
-        <h3 style={{ margin: 0 }}>Nova conversa</h3>
+        <h3 style={{ margin: 0 }}>Novo contato</h3>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          O contato fica salvo no OficinaZap e a conversa já abre no WhatsApp. Se o número já existir, abre a conversa dele.
+        </p>
+        <label>
+          Nome do cliente
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Maria da Loja Bela" autoFocus={!name} />
+        </label>
         <label>
           WhatsApp do cliente (com DDD)
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-8888" autoFocus required />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" autoFocus={!!name} required />
         </label>
-        <label>
-          Nome (opcional)
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
+        {connections.length === 0 && (
+          <div style={{ color: "var(--danger)", fontSize: 13 }}>Nenhum número de WhatsApp está liberado para você. Peça ao administrador em Equipe.</div>
+        )}
+        {connections.length === 1 && (
+          <div className="muted" style={{ fontSize: 13 }}>
+            Vai pelo número <b>{connections[0].name}</b>
+            {connections[0].connected_at ? "" : " (desconectado)"}
+          </div>
+        )}
         {connections.length > 1 && (
           <label>
             Enviar pelo número
@@ -1010,13 +1024,13 @@ function NewChatModal({
           </div>
         )}
         <label>
-          Primeira mensagem
+          Primeira mensagem (opcional)
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={rascunho ? 6 : 3} placeholder="Olá! Aqui é da Sacolas Oficina..." />
         </label>
         {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button type="button" onClick={onClose}>Cancelar</button>
-          <button className="primary" disabled={busy || !phone.trim()}>{busy ? "Abrindo..." : "Iniciar conversa"}</button>
+          <button className="primary" disabled={busy || !phone.trim()}>{busy ? "Salvando..." : "Salvar e abrir conversa"}</button>
         </div>
       </form>
     </div>
