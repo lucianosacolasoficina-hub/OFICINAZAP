@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { HttpError } from "../api";
 import { getSetting, setSetting } from "../db";
-import type { MediaFile, WhatsAppProvider } from "./types";
+import type { Citacao, MediaFile, WhatsAppProvider } from "./types";
 
 // Trava contra envio em massa no WhatsApp (proteção contra banimento).
 // Os números estão ligados por QR Code (Evolution, não oficial). O que o WhatsApp pune é disparo em massa:
@@ -204,10 +204,10 @@ export async function enviarComTrava<T>(instance: string, destino: string, conte
 /** Envolve o provedor para que todo envio passe pela trava. */
 export function comTrava(p: WhatsAppProvider, instance: string): WhatsAppProvider {
   return Object.assign(Object.create(p), {
-    sendText: (phone: string, text: string) => enviarComTrava(instance, phone, text, () => p.sendText(phone, text)),
-    sendImage: (phone: string, file: MediaFile, caption?: string) =>
-      enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(caption ?? "")]), () => p.sendImage(phone, file, caption)),
-    sendDocument: (phone: string, file: MediaFile, fileName: string, caption?: string) =>
-      enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(fileName + (caption ?? ""))]), () => p.sendDocument(phone, file, fileName, caption)),
+    sendText: (phone: string, text: string, citar?: Citacao) => enviarComTrava(instance, phone, text, () => p.sendText(phone, text, citar)),
+    sendImage: (phone: string, file: MediaFile, caption?: string, citar?: Citacao) =>
+      enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(caption ?? "")]), () => p.sendImage(phone, file, caption, citar)),
+    sendDocument: (phone: string, file: MediaFile, fileName: string, caption?: string, citar?: Citacao) =>
+      enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(fileName + (caption ?? ""))]), () => p.sendDocument(phone, file, fileName, caption, citar)),
   }) as WhatsAppProvider;
 }

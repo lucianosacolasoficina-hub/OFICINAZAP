@@ -1,9 +1,9 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
-import { addMessage, setMessageMedia, threadIds, updateConversation, type Conversation } from "@/lib/db";
+import { addMessage, MSG_APAGADA, setMessageMedia, threadIds, updateConversation, type Conversation, type Message } from "@/lib/db";
 import { saveMedia } from "@/lib/media";
 import { apagarRascunho, arquivoDoRascunho, lerRascunho, type Rascunho } from "@/lib/rascunhos";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { whatsapp, type MediaFile } from "@/lib/whatsapp";
+import { whatsapp, type Citacao, type MediaFile } from "@/lib/whatsapp";
 import { enviarTexto, IG_PREFIX } from "@/lib/instagram";
 import { enviarEmail, MAIL_PREFIX } from "@/lib/email";
 import { contaImap, enviarImap } from "@/lib/emailImap";
@@ -12,11 +12,13 @@ import { enviarMessenger, FB_PREFIX } from "@/lib/messenger";
 // Atendente envia uma mensagem. Ao responder, ele assume a conversa e a IA para de responder nela.
 export const POST = route<IdCtx>(async (req, { params }, userId) => {
   const { id } = await params;
-  const { body, image, document, rascunho } = (await req.json()) as {
+  const { body, image, document, rascunho, replyTo } = (await req.json()) as {
     body?: string;
     image?: { data?: string; mimeType?: string };
     document?: { data?: string; mimeType?: string; name?: string };
     rascunho?: string;
+    /** Id (no OficinaZap) da mensagem que está sendo respondida. */
+    replyTo?: string;
   };
   const text = body?.trim() ?? "";
   // Foto colada (Ctrl+V de um recorte de tela) ou escolhida no 📎; o texto vira a legenda.
@@ -61,17 +63,27 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
     throw new HttpError(400, "por enquanto o envio de imagem e arquivo funciona só nas conversas de WhatsApp");
   }
   const destino = is_group ? `${phone}@g.us` : phone;
+  // Responder a uma mensagem: no WhatsApp ela sai citada em cima da resposta.
+  let citada: Message | null = null;
+  if (replyTo) {
+    const { data: m } = await supabaseAdmin().from("messages").select("*").eq("id", replyTo).in("conversation_id", await threadIds(id)).maybeSingle();
+    citada = (m as Message | null) ?? null;
+  }
+  const citar: Citacao | undefined =
+    citada?.wa_message_id && citada.body !== MSG_APAGADA && !(canal === "instagram" || canal === "messenger" || canal === "email")
+      ? { id: citada.wa_message_id, remoteJid: is_group ? `${phone}@g.us` : `${phone}@s.whatsapp.net`, fromMe: citada.direction === "out", text: citada.body || "" }
+      : undefined;
   const sent = foto
-    ? await whatsapp(conversation.connection?.instance).sendImage(destino, foto, text || undefined)
+    ? await whatsapp(conversation.connection?.instance).sendImage(destino, foto, text || undefined, citar)
     : doc
-    ? await whatsapp(conversation.connection?.instance).sendDocument(destino, doc, doc.nome, text || undefined)
+    ? await whatsapp(conversation.connection?.instance).sendDocument(destino, doc, doc.nome, text || undefined, citar)
     : conversation.connection?.channel === "instagram"
       ? await enviarTexto(conversation.connection.id, phone.slice(IG_PREFIX.length), text)
       : conversation.connection?.channel === "messenger"
       ? await enviarMessenger(conversation.connection.id, phone.slice(FB_PREFIX.length), text)
       : conversation.connection?.channel === "email"
       ? await enviarPorEmail(conversation.connection.id, phone.slice(MAIL_PREFIX.length), text, await threadIds(id))
-      : await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text);
+      : await whatsapp(conversation.connection?.instance).sendText(is_group ? `${phone}@g.us` : phone, text, citar);
   if (conversation.status !== "open" || conversation.assigned_to !== userId) {
     await updateConversation(id, { status: "open", assigned_to: userId });
   }
@@ -83,6 +95,7 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
     ...(foto && { media_type: "image" }),
     ...(doc && { media_type: "document" }),
     wa_message_id: sent.waMessageId ?? null,
+    ...(citada && { reply_to: citada.id }),
   });
   // Guarda o arquivo enviado para ele aparecer na conversa (se falhar, o arquivo já foi para o cliente).
   const guardar = foto ?? doc;

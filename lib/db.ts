@@ -42,8 +42,12 @@ export type Message = {
   wa_message_id: string | null;
   /** Texto do áudio (voz → texto). */
   transcricao?: string | null;
+  /** Mensagem citada nesta resposta (coluna da migração 013; pode não existir ainda no banco). */
+  reply_to?: string | null;
   created_at: string;
 };
+
+export { MSG_APAGADA } from "./client";
 
 export type Department = {
   id: string;
@@ -105,10 +109,16 @@ export async function activeConversation(
 export async function addMessage(
   conversationId: string,
   msg: Pick<Message, "direction" | "sender" | "body"> &
-    Partial<Pick<Message, "agent_id" | "media_type" | "wa_message_id">>,
+    Partial<Pick<Message, "agent_id" | "media_type" | "wa_message_id" | "reply_to">>,
 ): Promise<Message | null> {
   const db = supabaseAdmin();
-  const res = await db.from("messages").insert({ conversation_id: conversationId, ...msg }).select().single();
+  let res = await db.from("messages").insert({ conversation_id: conversationId, ...msg }).select().single();
+  // Banco ainda sem a coluna reply_to (migração 013 não rodada): grava sem a ligação com a mensagem citada.
+  if (res.error && "reply_to" in msg && /reply_to/.test(res.error.message)) {
+    const { reply_to: _semColuna, ...resto } = msg;
+    void _semColuna;
+    res = await db.from("messages").insert({ conversation_id: conversationId, ...resto }).select().single();
+  }
   // Mensagem repetida (o provedor reenviou o webhook): ignora.
   if (res.error?.code === "23505") return null;
   const saved = check(res) as Message;
