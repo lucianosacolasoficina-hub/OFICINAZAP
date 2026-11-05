@@ -4,6 +4,7 @@ import { sincronizarTodosImap } from "./lib/emailImap";
 import { sincronizarGoogle } from "./lib/googleSync";
 import { preencherFotos } from "./lib/fotos";
 import { retomarHistoricos } from "./lib/historico";
+import { baixarMidiasPendentes } from "./lib/midias";
 import { recuperarPerdidas } from "./lib/recuperar";
 
 setInterval(() => {
@@ -34,6 +35,11 @@ setInterval(() => {
 setTimeout(() => {
   retomarHistoricos().catch((e) => console.error("retomar histórico", e));
 }, 90_000);
+
+// Anexos que entraram sem o arquivo (histórico importado, enviados pelo celular): 20 a cada 20 segundos.
+setInterval(() => {
+  baixarMidiasPendentes(20).catch((e) => console.error("anexos pendentes", e));
+}, 20_000);
 
 // Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
 // para enxergar cedo se algo voltar a acumular.
