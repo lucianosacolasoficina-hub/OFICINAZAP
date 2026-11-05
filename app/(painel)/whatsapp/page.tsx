@@ -309,12 +309,12 @@ function ConnectionCard({
             {hist && hist.status !== "nunca" && (
               <div className="muted" style={{ fontSize: 12.5 }}>
                 {hist.status === "rodando"
-                  ? `Puxando… ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens`
+                  ? `Puxando… ${hist.mensagens ?? 0} mensagens trazidas até agora`
                   : hist.status === "parado" || hist.status === "parar"
-                    ? `Parado em ${hist.feitos ?? 0} de ${hist.chats ?? "?"} conversas · ${hist.mensagens ?? 0} mensagens trazidas.`
+                    ? `Parado · ${hist.mensagens ?? 0} mensagens trazidas.`
                     : hist.status === "erro"
                     ? `Erro ao puxar: ${hist.erro}`
-                    : `Última vez: ${hist.chats ?? 0} conversas encontradas, ${hist.conversas ?? 0} novas, ${hist.mensagens ?? 0} mensagens trazidas.${hist.erro ? " ⚠ " + hist.erro : ""}`}
+                    : `Última vez: ${hist.mensagens ?? 0} mensagens trazidas, ${hist.conversas ?? 0} conversas novas.${hist.erro ? " ⚠ " + hist.erro : ""}`}
               </div>
             )}
           </div>

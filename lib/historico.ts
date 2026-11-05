@@ -1,4 +1,4 @@
-import type { Connection } from "./connections";
+import { getConnection, type Connection } from "./connections";
 import { getSetting, setSetting, upsertContact, upsertGroup } from "./db";
 import { supabaseAdmin } from "./supabase/admin";
 import { EvolutionProvider, type HistMsg } from "./whatsapp/evolution";
@@ -89,69 +89,67 @@ export async function registrarEnviada(conn: Connection, msg: HistMsg) {
   }
 }
 
-/** Puxa da Evolution todas as conversas guardadas deste número (últimos `dias` dias), sem limite de mensagens por conversa. Grava o andamento em settings. */
+/**
+ * Puxa as conversas antigas deste número (últimos `dias` dias) que ainda não estão no OficinaZap.
+ * Lê direto do banco onde a Evolution guarda as mensagens, em lotes de 200 com pausa entre eles:
+ * não pede nada ao servidor da Evolution (que já caiu por falta de memória com esse trabalho).
+ * Grava o andamento em settings; se o servidor reiniciar no meio, continua sozinho ao voltar.
+ */
 export async function puxarHistorico(conn: Connection, dias: number) {
   const chave = `historico_${conn.id}`;
-  const ev = new EvolutionProvider(conn.instance);
-  const desde = Date.now() / 1000 - dias * 86400;
+  const desde = Math.floor(Date.now() / 1000 - dias * 86400);
   const andamento = { status: "rodando", inicio: new Date().toISOString(), dias, chats: 0, feitos: 0, conversas: 0, mensagens: 0, erro: "" };
   await setSetting(chave, andamento);
+  const db = supabaseAdmin();
+  let aposTs = 0;
+  let aposId = "";
   try {
-    const chats = (await ev.findChats()).filter(
-      (c) => c.remoteJid && /@(s\.whatsapp\.net|g\.us|lid)$/.test(c.remoteJid) && (!c.updatedAt || new Date(c.updatedAt).getTime() / 1000 >= desde),
-    );
-    andamento.chats = chats.length;
-    await setSetting(chave, andamento);
-    let falhas = 0;
-    for (const c of chats) {
+    for (let lote = 0; lote < 2000; lote++) {
       // Pedido de parar (botão na tela) ou outra importação começou depois desta.
       const atual = await getSetting<{ status?: string; inicio?: string }>(chave, {});
       if (atual.status === "parar" || (atual.inicio && atual.inicio !== andamento.inicio)) {
         await setSetting(chave, { ...andamento, status: "parado", fim: new Date().toISOString() });
         return;
       }
-      // Devagar: a leitura pesa na Evolution (já derrubou o servidor por falta de memória).
-      await new Promise((r) => setTimeout(r, 1500));
-      try {
-        const msgs: HistMsg[] = [];
-        for (let page = 1; page <= 100; page++) {
-          let recs: Awaited<ReturnType<typeof ev.findMessages>> = [];
-          for (let t = 0; t < 3; t++) {
-            try {
-              recs = await ev.findMessages(c.remoteJid, page, 100);
-              break;
-            } catch (e) {
-              if (t === 2) throw e;
-              await new Promise((r) => setTimeout(r, 1500 * (t + 1)));
-            }
-          }
-          const parsed = recs.map((r) => EvolutionProvider.parseRecord(r)).filter((m): m is HistMsg => !!m);
-          msgs.push(...parsed.filter((m) => m.ts >= desde));
-          if (recs.length < 100 || parsed.some((m) => m.ts < desde)) break;
-          // Página inteira já guardada: o resto (mais antigo) também já está aqui — não sobrecarrega a Evolution.
-          const ids = parsed.map((m) => m.waMessageId);
-          if (ids.length) {
-            const { count } = await supabaseAdmin().from("messages").select("id", { count: "exact", head: true }).in("wa_message_id", ids);
-            if ((count ?? 0) >= ids.length) break;
-          }
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-        if (msgs.length) {
-          const r = await importarMensagens(conn, msgs);
-          andamento.conversas += r.conversas;
-          andamento.mensagens += r.mensagens;
-        }
-      } catch (e) {
-        // Uma conversa com problema não interrompe as outras.
-        falhas++;
-        andamento.erro = `${falhas} conversa(s) não puderam ser lidas (última: ${(e as Error).message})`;
+      const { data, error } = await db.rpc("zap_historico_do_banco", {
+        p_instance: conn.instance, p_desde: desde, p_apos_ts: aposTs, p_apos_id: aposId, p_limite: 200,
+      });
+      if (error) throw new Error(error.message);
+      const linhas = (data ?? []) as { ts: number; id: string; rec: Parameters<typeof EvolutionProvider.parseRecord>[0] }[];
+      if (!linhas.length) break;
+      aposTs = linhas[linhas.length - 1].ts;
+      aposId = linhas[linhas.length - 1].id;
+      const msgs: HistMsg[] = [];
+      for (const { rec } of linhas) {
+        // O nome que vem com o @lid às vezes é só o número do @lid: não serve como nome.
+        if (rec.pushName && rec.pushName === rec.key?.remoteJid?.split("@")[0]) rec.pushName = null;
+        const m = EvolutionProvider.parseRecord(rec);
+        if (m) msgs.push(m);
       }
-      andamento.feitos++;
-      if (andamento.feitos % 10 === 0) await setSetting(chave, andamento);
+      andamento.feitos += linhas.length;
+      if (msgs.length) {
+        const r = await importarMensagens(conn, msgs);
+        andamento.conversas += r.conversas;
+        andamento.mensagens += r.mensagens;
+      }
+      await setSetting(chave, andamento);
+      if (linhas.length < 200) break;
+      await new Promise((r) => setTimeout(r, 1000));
     }
     await setSetting(chave, { ...andamento, status: "ok", fim: new Date().toISOString() });
   } catch (err) {
     await setSetting(chave, { ...andamento, status: "erro", erro: (err as Error).message });
+  }
+}
+
+/** Retoma importações de histórico pedidas ou interrompidas por um reinício do servidor (uma por vez). */
+export async function retomarHistoricos() {
+  const { data } = await supabaseAdmin().from("settings").select("key, value").like("key", "historico_%");
+  for (const row of (data ?? []) as { key: string; value: { status?: string; dias?: number } }[]) {
+    if (row.value?.status !== "rodando" && row.value?.status !== "pedido") continue;
+    const conn = await getConnection(row.key.slice("historico_".length)).catch(() => null);
+    if (!conn) continue;
+    await puxarHistorico(conn, row.value.dias ?? 3650);
   }
 }
 

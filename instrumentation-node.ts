@@ -3,6 +3,7 @@ import { sincronizarTodos } from "./lib/email";
 import { sincronizarTodosImap } from "./lib/emailImap";
 import { sincronizarGoogle } from "./lib/googleSync";
 import { preencherFotos } from "./lib/fotos";
+import { retomarHistoricos } from "./lib/historico";
 import { recuperarPerdidas } from "./lib/recuperar";
 
 setInterval(() => {
@@ -28,6 +29,11 @@ setTimeout(() => {
 setInterval(() => {
   recuperarPerdidas().catch((e) => console.error("recuperar mensagens", e));
 }, 2 * 60_000);
+
+// "Puxar conversas antigas" pedido ou interrompido por um reinício: continua sozinho ao subir.
+setTimeout(() => {
+  retomarHistoricos().catch((e) => console.error("retomar histórico", e));
+}, 90_000);
 
 // Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
 // para enxergar cedo se algo voltar a acumular.
