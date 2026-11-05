@@ -117,3 +117,25 @@ export function podeVerConversa(
   if (conv.status === "closed" && !verTudo) return false;
   return conv.assigned_to === userId || (!!conv.connection_id && canais.includes(conv.connection_id));
 }
+
+/** Confere no banco se o atendente pode abrir a conversa (números liberados ou conversa com ele). */
+export async function podeAbrirConversa(agent: Agent | null, conversationId: string): Promise<boolean> {
+  if (!agent?.canais) return true;
+  const { data: c } = await supabaseAdmin()
+    .from("conversations")
+    .select("assigned_to, status, connection_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  return !c || podeVerConversa(agent.id, c, agent.canais, can(agent, "ver_todas"));
+}
+
+// E-mail -> atendente do OficinaZap (para quem chega pelo sistema de gestão). Guardado por 5 minutos.
+let cacheEmails: { t: number; m: Map<string, string> } | null = null;
+export async function agentePorEmail(email: string): Promise<Agent | null> {
+  if (!cacheEmails || Date.now() - cacheEmails.t > 300_000) {
+    const { data } = await supabaseAdmin().auth.admin.listUsers({ perPage: 1000 });
+    cacheEmails = { t: Date.now(), m: new Map((data?.users ?? []).filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u.id])) };
+  }
+  const id = cacheEmails.m.get(email.trim().toLowerCase());
+  return id ? getAgent(id) : null;
+}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "./supabase/server";
-import { can, getAgent, isDono, permFor, podeVerConversa } from "./perms";
+import { can, getAgent, isDono, permFor, podeAbrirConversa } from "./perms";
 import { supabaseAdmin } from "./supabase/admin";
 
 export class HttpError extends Error {
@@ -29,15 +29,8 @@ export function route<C>(handler: (req: Request, ctx: C, userId: string) => Prom
       if (agent?.canais) {
         // Atendente só abre as conversas dos números liberados para ele (ou que estão com ele).
         const conv = path.match(/^\/api\/conversations\/([0-9a-f-]{36})/);
-        if (conv) {
-          const { data: c } = await supabaseAdmin()
-            .from("conversations")
-            .select("assigned_to, status, connection_id")
-            .eq("id", conv[1])
-            .maybeSingle();
-          if (c && !podeVerConversa(user.id, c, agent.canais, can(agent, "ver_todas"))) {
-            throw new HttpError(403, "esta conversa é de um número de WhatsApp que não foi liberado para você");
-          }
+        if (conv && !(await podeAbrirConversa(agent, conv[1]))) {
+          throw new HttpError(403, "esta conversa é de um número de WhatsApp que não foi liberado para você");
         }
         // Tela de conexões: só mexe nos números liberados para ele.
         const num = path.match(/^\/api\/(?:whatsapp|instagram|email)\/([0-9a-f-]{36})/);

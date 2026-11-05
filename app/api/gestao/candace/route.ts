@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { emailDaGestao } from "@/lib/gestaoAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { signedMediaUrl } from "@/lib/media";
+import { agentePorEmail, podeAbrirConversa, podeVerConversa, can } from "@/lib/perms";
 
 // Candace (assistente de vendas do sistema de gestão) lê as conversas do WhatsApp para lançar pedidos.
 // Só leitura: busca conversas, lê as mensagens e devolve links temporários dos arquivos. Nunca envia nada.
@@ -21,6 +22,10 @@ export async function POST(req: Request) {
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const email = await emailDaGestao(token);
   if (!email) return resp(req, { error: "sessão do sistema inválida", code: "session_expired" }, 401);
+  // Mesmo sigilo do OficinaZap: quem pergunta só lê as conversas dos números liberados para ele.
+  // E-mail sem cadastro de atendente no OficinaZap não lê nada.
+  const agente = await agentePorEmail(email);
+  if (!agente || !agente.active) return resp(req, { error: "seu e-mail não tem acesso ao WhatsApp no OficinaZap: peça ao administrador" }, 403);
   const b = (await req.json().catch(() => ({}))) as { acao?: string; texto?: string; conversa_id?: string; limite?: number; ids?: string[] };
   const db = supabaseAdmin();
   try {
@@ -31,12 +36,13 @@ export async function POST(req: Request) {
       const { data: cts, error } = await q;
       if (error) throw new Error(error.message);
       const ids = (cts ?? []).map((c) => c.id);
-      const { data: cvs } = ids.length ? await db.from("conversations").select("id, contact_id, last_message_at, last_message_preview, status, connection:whatsapp_connections(name)").in("contact_id", ids).order("last_message_at", { ascending: false }) : { data: [] as any[] };
-      const out = (cvs ?? []).slice(0, 10).map((v: any) => { const c = (cts ?? []).find((x) => x.id === v.contact_id)!; return { conversa_id: v.id, contato: c?.name || c?.phone, telefone: c?.phone, cliente_no_sistema: c?.gestao_cliente_nome || null, cliente_id_no_sistema: c?.gestao_cliente_id || null, canal: v.connection?.name || "", ultima_mensagem: String(v.last_message_preview || "").slice(0, 120), quando: v.last_message_at }; });
+      const { data: cvs } = ids.length ? await db.from("conversations").select("id, contact_id, last_message_at, last_message_preview, status, assigned_to, connection_id, connection:whatsapp_connections(name)").in("contact_id", ids).order("last_message_at", { ascending: false }) : { data: [] as any[] };
+      const out = (cvs ?? []).filter((v: any) => podeVerConversa(agente.id, v, agente.canais, can(agente, "ver_todas"))).slice(0, 10).map((v: any) => { const c = (cts ?? []).find((x) => x.id === v.contact_id)!; return { conversa_id: v.id, contato: c?.name || c?.phone, telefone: c?.phone, cliente_no_sistema: c?.gestao_cliente_nome || null, cliente_id_no_sistema: c?.gestao_cliente_id || null, canal: v.connection?.name || "", ultima_mensagem: String(v.last_message_preview || "").slice(0, 120), quando: v.last_message_at }; });
       return resp(req, { conversas: out });
     }
     if (b.acao === "ler") {
       if (!UUID.test(String(b.conversa_id))) return resp(req, { error: "conversa inválida" }, 400);
+      if (!(await podeAbrirConversa(agente, b.conversa_id!))) return resp(req, { error: "esta conversa é de um número de WhatsApp que não foi liberado para você" }, 403);
       const { data: cv } = await db.from("conversations").select("id, contact:contacts(name, phone, gestao_cliente_id, gestao_cliente_nome), connection:whatsapp_connections(name)").eq("id", b.conversa_id!).maybeSingle();
       if (!cv) return resp(req, { error: "conversa não encontrada" }, 404);
       const lim = Math.min(80, Math.max(5, Number(b.limite) || 40));
@@ -52,9 +58,10 @@ export async function POST(req: Request) {
     if (b.acao === "arquivos") {
       const ids = (Array.isArray(b.ids) ? b.ids : []).filter((x) => UUID.test(String(x))).slice(0, 10);
       if (!ids.length) return resp(req, { arquivos: [] });
-      const { data: ms } = await db.from("messages").select("id, body, media_type, media_url, created_at").in("id", ids);
+      const { data: ms } = await db.from("messages").select("id, conversation_id, body, media_type, media_url, created_at").in("id", ids);
       const out = [];
       for (const m of ms ?? []) {
+        if (!(await podeAbrirConversa(agente, m.conversation_id))) { out.push({ id: m.id, erro: "número não liberado para você" }); continue; }
         if (!m.media_url) { out.push({ id: m.id, erro: "arquivo não guardado" }); continue; }
         const ext = String(m.media_url).split(".").pop()!.toLowerCase();
         const url = await signedMediaUrl(m.media_url);
