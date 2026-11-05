@@ -1,5 +1,7 @@
 import { getConnection, type Connection } from "./connections";
 import { getSetting, setSetting, upsertContact, upsertGroup } from "./db";
+import { guardarMidiaPorWaId } from "./midiaFaltando";
+import { transcreverMensagem, transcricaoLigada } from "./transcrever";
 import { supabaseAdmin } from "./supabase/admin";
 import { EvolutionProvider, type HistMsg } from "./whatsapp/evolution";
 
@@ -85,6 +87,13 @@ export async function registrarEnviada(conn: Connection, msg: HistMsg) {
   const { data: ja } = await db.from("messages").select("id").eq("wa_message_id", msg.waMessageId).maybeSingle();
   if (ja) return;
   await importarMensagens(conn, [msg]);
+  // Foto, áudio ou PDF enviado pelo celular: guarda o arquivo para aparecer no balão.
+  if (msg.mediaType) {
+    const m = await guardarMidiaPorWaId(msg.waMessageId).catch((err) => console.error("Falha ao baixar mídia enviada", msg.waMessageId, err));
+    if (m && msg.mediaType === "audio" && transcricaoLigada()) {
+      transcreverMensagem(m).catch((err) => console.error("Falha ao transcrever", msg.waMessageId, err));
+    }
+  }
   // Quem respondeu pelo celular atendeu o cliente: para de contar o tempo de espera.
   if (!msg.isGroup) {
     const { data: m } = await db.from("messages").select("conversation_id").eq("wa_message_id", msg.waMessageId).maybeSingle();

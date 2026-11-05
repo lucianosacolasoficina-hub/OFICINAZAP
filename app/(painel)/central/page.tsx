@@ -6,7 +6,7 @@ import { FotoContato } from "@/components/FotoContato";
 
 // Central de atendimento: uma coluna para cada número de WhatsApp, lado a lado, atualizando sozinha.
 type Conn = { id: string; name: string; phone?: string | null; connected_at: string | null };
-type Stats = { todas: number; pendentes: number; abertas: number; robo: number };
+type Stats = { todas: number; pendentes: number; abertas: number; robo: number; ativas?: number };
 type Summary = { connections: Conn[]; numeros?: Record<string, Stats>; views?: Record<string, number>; alertas?: { espera_min: number; retomar_dias: number } };
 type Row = {
   id: string;
@@ -15,41 +15,105 @@ type Row = {
   last_message_at: string;
   last_message_preview: string | null;
   waiting_since: string | null;
+  connection_id: string | null;
   contact: { id: string; name: string | null; phone: string; is_group: boolean };
   agent: { id: string; name: string } | null;
 };
 
-const FILTROS = [
-  { key: "pendentes", label: "Aguardando" },
-  { key: "todas", label: "Abertas" },
+// Abas principais (com o número na própria aba, como no WhatsApp Business / Chatwoot) e o resto em "Mais".
+const ABAS = [
+  { key: "pendentes", label: "Aguardando", dica: "Cliente mandou mensagem e está esperando resposta" },
+  { key: "abertas", label: "Abertas", dica: "Todas as conversas em andamento (aguardando, em atendimento e com a IA)" },
+  { key: "tudo", label: "Todas", dica: "Todas as conversas deste número, inclusive as encerradas (como no WhatsApp)" },
+] as const;
+const MAIS = [
+  { key: "atendimento", label: "Em atendimento" },
   { key: "robo", label: "Com a IA" },
-  { key: "retomar", label: "Retomar" },
-  { key: "fechadas", label: "Fechadas" },
+  { key: "naolidas", label: "Não lidas" },
+  { key: "retomar", label: "Retomar (cliente sumiu)" },
+  { key: "fechadas", label: "Encerradas" },
 ] as const;
 const LATE_MIN = 30;
+const PAGINA = 50;
+const MAX_ATUALIZA = 500;
+
+/** Um cliente aparece uma vez por número: fica a conversa mais recente. */
+function semRepetidas(rows: Row[]) {
+  const vistos = new Set<string>();
+  return rows.filter((c) => {
+    const k = `${c.contact.id}|${c.connection_id ?? ""}`;
+    if (vistos.has(k) || vistos.has(c.id)) return false;
+    vistos.add(k);
+    vistos.add(c.id);
+    return true;
+  });
+}
 
 function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false, onMax }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null; lateMin?: number; max?: boolean; onMax?: () => void }) {
   const [filtro, setFiltro] = useState<string>(() => {
     try {
-      return localStorage.getItem(`central_${conn.id}`) || "todas";
+      return localStorage.getItem(`central2_${conn.id}`) || "abertas";
     } catch {
-      return "todas";
+      return "abertas";
     }
   });
   const [lista, setLista] = useState<Row[] | null>(null);
+  const [fim, setFim] = useState(false);
+  const [maisCarregando, setMaisCarregando] = useState(false);
   const [q, setQ] = useState("");
+  // Tudo que já veio do servidor (com repetidas), para saber de onde continuar ao rolar.
+  const bruto = useRef<Row[]>([]);
+  const chave = `${filtro}|${conn.id}|${q.trim()}`;
+  const chaveAtual = useRef(chave);
+  chaveAtual.current = chave;
 
+  const buscar = useCallback(
+    (offset: number, limit: number) => {
+      const p = new URLSearchParams({ view: filtro, queue: "todas", connection: conn.id, offset: String(offset), limit: String(limit), dedup: "0" });
+      if (q.trim()) p.set("q", q.trim());
+      return api<Row[]>(`/api/conversations?${p}`);
+    },
+    [filtro, conn.id, q],
+  );
+
+  // Atualiza o que já está na tela (a cada 10 s) sem perder o que foi carregado rolando.
   const carregar = useCallback(async () => {
-    const p = new URLSearchParams({ view: filtro, queue: "todas", connection: conn.id });
-    if (q.trim()) p.set("q", q.trim());
-    setLista(await api<Row[]>(`/api/conversations?${p}`));
-  }, [filtro, conn.id, q]);
+    const k = chave;
+    const n = Math.min(Math.max(bruto.current.length, PAGINA), MAX_ATUALIZA);
+    const rows = await buscar(0, n);
+    if (chaveAtual.current !== k) return;
+    const resto = bruto.current.length > n ? bruto.current.slice(n) : [];
+    bruto.current = [...rows, ...resto];
+    if (!resto.length) setFim(rows.length < n);
+    setLista(semRepetidas(bruto.current));
+  }, [buscar, chave]);
+
+  const carregarMais = useCallback(async () => {
+    if (fim || maisCarregando || lista === null) return;
+    const k = chave;
+    setMaisCarregando(true);
+    try {
+      const rows = await buscar(bruto.current.length, PAGINA);
+      if (chaveAtual.current !== k) return;
+      bruto.current = [...bruto.current, ...rows];
+      setFim(rows.length < PAGINA);
+      setLista(semRepetidas(bruto.current));
+    } finally {
+      setMaisCarregando(false);
+    }
+  }, [buscar, chave, fim, maisCarregando, lista]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(`central_${conn.id}`, filtro);
+      localStorage.setItem(`central2_${conn.id}`, filtro);
     } catch {}
   }, [filtro, conn.id]);
+
+  useEffect(() => {
+    bruto.current = [];
+    setLista(null);
+    setFim(false);
+  }, [chave]);
 
   useEffect(() => {
     const t0 = setTimeout(() => carregar().catch(() => {}), q ? 300 : 0);
@@ -60,8 +124,14 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
     };
   }, [carregar, q]);
 
+  // Rolagem infinita: chegando perto do fim da lista, carrega mais 50.
+  const rolar = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) carregarMais().catch(() => {});
+  };
+
   const online = !!conn.connected_at;
-  // Passar o mouse por um filtro (ou contador) já mostra a lista dele, sem precisar clicar.
+  // Passar o mouse por uma aba já mostra a lista dela, sem precisar clicar.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const passar = (key: string) => ({
     onMouseEnter: () => {
@@ -71,40 +141,55 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
     onMouseLeave: () => {
       if (timer.current) clearTimeout(timer.current);
     },
-    onClick: () => setFiltro(key),
+    onClick: () => {
+      if (timer.current) clearTimeout(timer.current);
+      setFiltro(key);
+    },
   });
+  const contagem: Record<string, number | undefined> = {
+    pendentes: stats?.pendentes,
+    abertas: stats?.ativas,
+    tudo: stats?.todas,
+    atendimento: stats?.abertas,
+    robo: stats?.robo,
+  };
+  const noMais = MAIS.some((m) => m.key === filtro);
   return (
     <section className={`cc-col${online ? "" : " off"}${max ? " max" : ""}`}>
-      <header className="cc-h" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,input")) onMax?.(); }}>
+      <header className="cc-h" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,input,select")) onMax?.(); }}>
         <div className="cc-t">
-          <span className={`num-dot ${online ? "ok" : "off"}`} />
+          <span className={`num-dot ${online ? "ok" : "off"}`} title={online ? "Conectado" : "Desconectado"} />
           <div>
             <b>{conn.name}</b>
-            <small>{conn.phone ? formatPhone(conn.phone) : "sem número"} · {online ? "conectado" : "desconectado"}</small>
+            <small>{conn.phone ? formatPhone(conn.phone) : "sem número"}</small>
           </div>
           {onMax && (
-            <button className="cc-max" onClick={onMax} title={max ? "Voltar para todas as caixas (Esc)" : "Abrir esta caixa na tela toda"}>
-              {max ? "⤡ Reduzir" : "⤢ Expandir"}
+            <button className="cc-max" onClick={onMax} title={max ? "Voltar para todas as caixas (Esc)" : "Abrir esta caixa na tela toda"} aria-label={max ? "Reduzir" : "Expandir"}>
+              {max ? "⤡" : "⤢"}
             </button>
           )}
         </div>
-        <div className="cc-stats">
-          <span className="w" title="Aguardando resposta" {...passar("pendentes")}><b>{stats?.pendentes ?? "–"}</b>aguardando</span>
-          <span className="g" title="Em atendimento" {...passar("todas")}><b>{stats?.abertas ?? "–"}</b>atendendo</span>
-          <span className="v" title="Com a IA" {...passar("robo")}><b>{stats?.robo ?? "–"}</b>IA</span>
-          <span title="Conversas abertas" {...passar("todas")}><b>{stats?.todas ?? "–"}</b>abertas</span>
-        </div>
         {!online && <p className="cc-alerta">Desconectado: as mensagens deste número não estão chegando.</p>}
-        <div className="cc-f">
-          {FILTROS.map((f) => (
-            <button key={f.key} className={filtro === f.key ? "on" : ""} {...passar(f.key)}>
+        <div className="cc-abas" role="tablist">
+          {ABAS.map((f) => (
+            <button key={f.key} role="tab" aria-selected={filtro === f.key} className={`${filtro === f.key ? "on" : ""}${f.key === "pendentes" && (stats?.pendentes ?? 0) > 0 ? " alerta" : ""}`} title={f.dica} {...passar(f.key)}>
               {f.label}
+              {contagem[f.key] !== undefined && <span className="cc-n">{contagem[f.key]}</span>}
             </button>
           ))}
+          <select className={`cc-mais${noMais ? " on" : ""}`} value={noMais ? filtro : ""} onChange={(e) => e.target.value && setFiltro(e.target.value)} title="Outros filtros" aria-label="Outros filtros">
+            <option value="">Mais…</option>
+            {MAIS.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+                {contagem[m.key] !== undefined ? ` (${contagem[m.key]})` : ""}
+              </option>
+            ))}
+          </select>
         </div>
-        <input className="cc-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nesta coluna…" />
+        <input className="cc-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome, número ou mensagem…" />
       </header>
-      <div className="cc-list">
+      <div className="cc-list" onScroll={rolar}>
         {lista === null && <p className="muted cc-vazio">Carregando…</p>}
         {lista?.length === 0 && <p className="muted cc-vazio">Nenhuma conversa aqui.</p>}
         {lista?.map((c) => {
@@ -112,7 +197,7 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
           const espera = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
           const late = espera && Date.now() - new Date(espera).getTime() > lateMin * 60_000;
           return (
-            <button key={c.id} className={`cc-item${aberta === c.id ? " on" : ""}${c.unread_count ? " nova" : ""}`} onClick={() => onAbrir(c.id)}>
+            <button key={c.id} className={`cc-item${aberta === c.id ? " on" : ""}${c.unread_count ? " nova" : ""}${c.status === "closed" ? " fechada" : ""}`} onClick={() => onAbrir(c.id)}>
               <FotoContato id={c.contact.id} name={nome} phone={c.contact.phone} size={40} />
               <span className="cc-body">
                 <span className="cc-l1">
@@ -123,6 +208,7 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
                 <span className="cc-l3">
                   {espera && <span className={`cc-wait${late ? " late" : ""}`}>⏳ {formatSince(espera)}</span>}
                   {c.status === "bot" && <span className="cc-chip">🤖 IA</span>}
+                  {c.status === "closed" && <span className="cc-chip">✔ encerrada</span>}
                   {c.agent && <span className="cc-chip">👤 {c.agent.name}</span>}
                   {c.unread_count > 0 && <span className="cc-un">{c.unread_count > 99 ? "99+" : c.unread_count}</span>}
                 </span>
@@ -130,6 +216,11 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
             </button>
           );
         })}
+        {lista && lista.length > 0 && !fim && (
+          <button className="cc-carregar" onClick={() => carregarMais().catch(() => {})} disabled={maisCarregando}>
+            {maisCarregando ? "Carregando…" : "Carregar mais conversas"}
+          </button>
+        )}
       </div>
     </section>
   );

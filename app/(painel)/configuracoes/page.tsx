@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
+import { TravaCard } from "@/components/TravaEnvio";
 
 function WhatsAppCard() {
   return (
@@ -129,6 +130,8 @@ export default function SettingsPage() {
       <h1>Configurações {saved && <span className="tag">salvo</span>}</h1>
 
       <WhatsAppCard />
+
+      <TravaCard />
 
       <BlingCard />
 

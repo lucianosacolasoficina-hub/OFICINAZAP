@@ -7,6 +7,16 @@ import { retomarHistoricos } from "./lib/historico";
 import { baixarMidiasPendentes } from "./lib/midias";
 import { recuperarPerdidas } from "./lib/recuperar";
 
+// Nenhuma chamada externa (Supabase, Google, Microsoft, Instagram, Bling, sistema de gestão) pode ficar
+// pendurada para sempre: sem prazo, uma resposta que nunca vem prende a tarefa automática que a fez
+// (e-mail, fotos, conferência de mensagens param de rodar) e acumula memória. Prazo padrão de 90 s;
+// quem já define o próprio prazo continua com o seu.
+const fetchOriginal = globalThis.fetch;
+globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  if (init?.signal || (typeof Request !== "undefined" && input instanceof Request && input.signal && !init)) return fetchOriginal(input, init);
+  return fetchOriginal(input, { ...init, signal: AbortSignal.timeout(90_000) });
+}) as typeof fetch;
+
 setInterval(() => {
   sincronizarTodos().catch((e) => console.error("sync e-mail", e));
   sincronizarTodosImap().catch((e) => console.error("sync gmail", e));
