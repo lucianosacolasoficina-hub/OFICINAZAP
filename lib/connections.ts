@@ -81,6 +81,12 @@ export async function deleteConnection(id: string) {
       check(await db.from("settings").upsert({ key: chave, value: [...new Set([...antes, ...ids])] }));
     }
   }
+  // Atendentes com acesso a este número: o acesso passa para o card novo do mesmo celular.
+  if (phone) {
+    const { data: ags } = await db.from("agents").select("id, permissions");
+    const com = (ags ?? []).filter((a) => Array.isArray(a.permissions?.canais) && a.permissions.canais.includes(id)).map((a) => a.id as string);
+    if (com.length) check(await db.from("settings").upsert({ key: `acessos_soltos_${phone}`, value: com }));
+  }
   check(await db.from("whatsapp_connections").delete().eq("id", id));
 }
 
@@ -108,6 +114,17 @@ export async function religarConversas(conn: Pick<Connection, "id" | "phone">) {
     n += count ?? 0;
   }
   if (ids.length) await db.from("settings").delete().eq("key", chave);
+  // Devolve aos atendentes o acesso que tinham ao card apagado deste celular.
+  const chaveAc = `acessos_soltos_${phone}`;
+  const { data: ac } = await db.from("settings").select("value").eq("key", chaveAc).maybeSingle();
+  const agentes = Array.isArray(ac?.value) ? (ac.value as string[]) : [];
+  for (const agId of agentes) {
+    const { data: a } = await db.from("agents").select("permissions").eq("id", agId).maybeSingle();
+    const perms = (a?.permissions ?? {}) as { canais?: string[] };
+    const canais = Array.isArray(perms.canais) ? perms.canais : [];
+    if (!canais.includes(conn.id)) await db.from("agents").update({ permissions: { ...perms, canais: [...canais, conn.id] } }).eq("id", agId);
+  }
+  if (agentes.length) await db.from("settings").delete().eq("key", chaveAc);
   if (n) console.log(`Conversas religadas ao número ${phone}: ${n}`);
   return n;
 }
