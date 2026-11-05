@@ -3,29 +3,28 @@ import { HttpError } from "../api";
 import { getSetting, setSetting } from "../db";
 import type { MediaFile, WhatsAppProvider } from "./types";
 
-// Trava de envio do WhatsApp (proteção contra banimento).
-// Os números estão ligados por QR Code (Evolution, não oficial): mandar muita mensagem em pouco tempo,
-// a mesma mensagem repetida ou responder em ciclo com outro robô são os sinais que o WhatsApp pune.
+// Trava contra envio em massa no WhatsApp (proteção contra banimento).
+// Os números estão ligados por QR Code (Evolution, não oficial). O que o WhatsApp pune é disparo em massa:
+// a mesma mensagem para muitos contatos de uma vez, rajadas de mensagens saindo juntas e robôs em ciclo.
+// Conversa normal (atendente falando com um cliente) fica LIVRE: não há limite por hora ou por dia nem pausa.
 // Toda mensagem que sai pelo OficinaZap passa por aqui:
-//  - fila por número, uma de cada vez, com intervalo e uma variação aleatória entre elas;
-//  - limite por minuto, por hora e por dia em cada número;
-//  - bloqueio da mesma mensagem para o mesmo contato em sequência (clique duplo, reenvio);
-//  - passou do limite: o número fica pausado e o master recebe um aviso no topo do OficinaZap.
+//  - fila por número, uma de cada vez, com um pequeno intervalo e variação entre elas;
+//  - a mesma mensagem (texto ou arquivo) para muitos contatos diferentes em pouco tempo é barrada;
+//  - rajada (muitas mensagens tentando sair ao mesmo tempo pelo mesmo número) é barrada;
+//  - a mesma mensagem para o mesmo contato em sequência não sai de novo (clique duplo, reenvio).
+// Quando barra algo, o master recebe um aviso no topo do OficinaZap.
 
 export type Limites = {
-  por_minuto: number;
-  por_hora: number;
-  por_dia: number;
   /** Segundos mínimos entre duas mensagens do mesmo número (a fila soma uma variação aleatória). */
   intervalo_seg: number;
-  /** Minutos que o número fica pausado depois de passar do limite. */
-  pausa_min: number;
-  /** Respostas do robô na mesma conversa em 10 minutos antes de ele parar e chamar um atendente. */
+  /** A mesma mensagem pode ir para até (este número - 1) contatos diferentes dentro de `massa_min`. */
+  massa_contatos: number;
+  massa_min: number;
+  /** Respostas da IA na mesma conversa em 10 minutos antes de ela parar e chamar um atendente. */
   robo_10min: number;
 };
 
-// Calibrado pelo uso real (nov/2026): o pico foi 11 por minuto, 51 por hora e 346 por dia num número.
-export const LIMITES_PADRAO: Limites = { por_minuto: 15, por_hora: 120, por_dia: 600, intervalo_seg: 2, pausa_min: 15, robo_10min: 4 };
+export const LIMITES_PADRAO: Limites = { intervalo_seg: 1, massa_contatos: 5, massa_min: 10, robo_10min: 4 };
 
 const lim = (n: unknown, min: number, max: number, padrao: number) => {
   const v = Math.round(Number(n));
@@ -34,11 +33,9 @@ const lim = (n: unknown, min: number, max: number, padrao: number) => {
 export function normalizaLimites(v: Partial<Limites> | null | undefined): Limites {
   const p = LIMITES_PADRAO;
   return {
-    por_minuto: lim(v?.por_minuto, 1, 60, p.por_minuto),
-    por_hora: lim(v?.por_hora, 5, 1000, p.por_hora),
-    por_dia: lim(v?.por_dia, 10, 5000, p.por_dia),
-    intervalo_seg: lim(v?.intervalo_seg, 1, 30, p.intervalo_seg),
-    pausa_min: lim(v?.pausa_min, 1, 24 * 60, p.pausa_min),
+    intervalo_seg: lim(v?.intervalo_seg, 0, 30, p.intervalo_seg),
+    massa_contatos: lim(v?.massa_contatos, 2, 100, p.massa_contatos),
+    massa_min: lim(v?.massa_min, 1, 24 * 60, p.massa_min),
     robo_10min: lim(v?.robo_10min, 1, 30, p.robo_10min),
   };
 }
@@ -58,55 +55,32 @@ export async function salvarLimites(v: Partial<Limites>) {
 }
 
 export type Aviso = { quando: string; instance: string; motivo: string; lido?: boolean };
-type Pausas = Record<string, { ate: string; motivo: string }>;
 
-// Estado de cada número (fica na memória do servidor; as pausas e os avisos ficam no banco).
+// Estado de cada número (fica na memória do servidor; os avisos ficam no banco).
 type Estado = {
-  envios: number[]; // horários (ms) das mensagens enviadas nas últimas 24 horas
+  envios: number[]; // horários (ms) das mensagens enviadas nas últimas 24 horas (só para mostrar)
   ultimo: number;
   fila: Promise<unknown>;
   naFila: number;
-  recentes: Map<string, number>; // assinatura da mensagem -> quando foi enviada
+  recentes: Map<string, number>; // contato + mensagem -> quando foi enviada
+  conteudos: Map<string, Map<string, number>>; // mensagem -> contatos que receberam -> quando
 };
-const g = globalThis as unknown as { __travaZap?: Map<string, Estado>; __travaPausas?: { t: number; v: Pausas } };
-const estados: Map<string, Estado> = (g.__travaZap ??= new Map());
+const g = globalThis as unknown as { __travaZap2?: Map<string, Estado> };
+const estados: Map<string, Estado> = (g.__travaZap2 ??= new Map());
 function estado(instance: string): Estado {
   let e = estados.get(instance);
   if (!e) {
-    e = { envios: [], ultimo: 0, fila: Promise.resolve(), naFila: 0, recentes: new Map() };
+    e = { envios: [], ultimo: 0, fila: Promise.resolve(), naFila: 0, recentes: new Map(), conteudos: new Map() };
     estados.set(instance, e);
   }
   return e;
 }
 
-const MAX_FILA = 15;
+/** Mensagens esperando ao mesmo tempo no mesmo número a partir das quais é rajada (disparo em massa). */
+const MAX_FILA = 10;
 const DUPLICADA_MS = 2 * 60_000;
-
-async function lerPausas(): Promise<Pausas> {
-  if (g.__travaPausas && Date.now() - g.__travaPausas.t < 15_000) return g.__travaPausas.v;
-  const v = await getSetting<Pausas>("trava_pausas", {}).catch(() => ({}) as Pausas);
-  g.__travaPausas = { t: Date.now(), v };
-  return v;
-}
-async function gravarPausas(p: Pausas) {
-  await setSetting("trava_pausas", p);
-  g.__travaPausas = { t: Date.now(), v: p };
-}
-
-/** Pausa ativa do número (ou null). */
-export async function pausaDe(instance: string) {
-  const p = (await lerPausas())[instance];
-  return p && new Date(p.ate).getTime() > Date.now() ? p : null;
-}
-
-export async function liberarNumero(instance: string) {
-  const p = { ...(await lerPausas()) };
-  delete p[instance];
-  await gravarPausas(p);
-  const e = estados.get(instance);
-  // Recomeça a contagem do minuto e da hora, senão o número voltaria a pausar na mensagem seguinte.
-  if (e) e.envios = [];
-}
+// Textos curtos ("ok", "bom dia", "obrigado") podem ir para vários clientes sem ser disparo em massa.
+const TEXTO_CURTO = 25;
 
 export async function lerAvisos(): Promise<Aviso[]> {
   return getSetting<Aviso[]>("trava_avisos", []).catch(() => []);
@@ -115,9 +89,14 @@ export async function marcarAvisosLidos() {
   const a = await lerAvisos();
   await setSetting("trava_avisos", a.map((x) => ({ ...x, lido: true })));
 }
+// O mesmo motivo no mesmo número só gera um aviso a cada 10 minutos.
+const ultimoAviso = new Map<string, number>();
 /** Guarda um aviso para o master (aparece em vermelho no topo do OficinaZap). */
 export async function avisarMaster(instance: string, motivo: string) {
   console.error(`TRAVA WhatsApp [${instance}]: ${motivo}`);
+  const k = `${instance}|${motivo.slice(0, 40)}`;
+  if (Date.now() - (ultimoAviso.get(k) ?? 0) < 10 * 60_000) return;
+  ultimoAviso.set(k, Date.now());
   try {
     const a = await lerAvisos();
     await setSetting("trava_avisos", [{ quando: new Date().toISOString(), instance, motivo }, ...a].slice(0, 30));
@@ -126,15 +105,7 @@ export async function avisarMaster(instance: string, motivo: string) {
   }
 }
 
-async function pausar(instance: string, motivo: string, l: Limites) {
-  const ate = new Date(Date.now() + l.pausa_min * 60_000);
-  await gravarPausas({ ...(await lerPausas()), [instance]: { ate: ate.toISOString(), motivo } }).catch((err) => console.error("pausa da trava", err));
-  await avisarMaster(instance, `${motivo}. Envios pausados por ${l.pausa_min} min (até ${hora(ate)}).`);
-}
-
-const hora = (d: Date) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-
-/** Contagem atual de um número (para a tela de Configurações). */
+/** Contagem atual de um número (só informativo, para a tela de Configurações). */
 export function contagem(instance: string) {
   const e = estados.get(instance);
   const agora = Date.now();
@@ -147,61 +118,78 @@ export function contagem(instance: string) {
   };
 }
 
-function assinatura(destino: string, conteudo: string | Buffer) {
-  return createHash("sha1").update(destino.replace(/\D/g, "")).update("|").update(conteudo).digest("hex");
-}
+const hash = (c: string | Buffer) => createHash("sha1").update(c).digest("hex");
+const normaliza = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
 
 /**
- * Passa um envio pela trava: espera a vez na fila do número, confere pausa, limites e repetição, e só então envia.
+ * Passa um envio pela trava: espera a vez na fila do número, confere repetição e disparo em massa, e então envia.
  * Se não puder enviar, lança um erro com a explicação (o atendente vê a mensagem na tela).
  */
 export async function enviarComTrava<T>(instance: string, destino: string, conteudo: string | Buffer, enviar: () => Promise<T>): Promise<T> {
   const e = estado(instance);
-  const pausa = await pausaDe(instance);
-  if (pausa) {
-    throw new HttpError(429, `Este número está pausado por segurança até ${hora(new Date(pausa.ate))} (${pausa.motivo}). O master pode liberar em Configurações.`);
-  }
+  const contato = destino.replace(/\D/g, "") || destino;
   if (e.naFila >= MAX_FILA) {
-    await pausar(instance, `Mais de ${MAX_FILA} mensagens esperando para sair ao mesmo tempo`, await getLimites());
-    throw new HttpError(429, "Muitas mensagens saindo ao mesmo tempo por este número: os envios foram pausados por segurança.");
+    await avisarMaster(instance, `Rajada barrada: mais de ${MAX_FILA} mensagens tentando sair ao mesmo tempo (parece envio em massa)`);
+    throw new HttpError(429, "Muitas mensagens saindo ao mesmo tempo por este número (parece envio em massa). Para proteger o WhatsApp, esta não foi enviada: aguarde alguns segundos e tente de novo.");
   }
-  const chave = assinatura(destino, conteudo);
+  const texto = typeof conteudo === "string";
+  const assinatura = hash(texto ? normaliza(conteudo) : conteudo);
+  // Mensagem curta não conta como disparo em massa.
+  const contaMassa = !texto || normaliza(conteudo).length >= TEXTO_CURTO;
+  const chave = `${contato}|${assinatura}`;
   e.naFila++;
   const vez = e.fila.then(async () => {
     const l = await getLimites();
     const agora = Date.now();
     e.envios = e.envios.filter((t) => agora - t < 86_400_000);
     for (const [k, t] of e.recentes) if (agora - t > DUPLICADA_MS) e.recentes.delete(k);
+    const janela = Math.max(l.massa_min * 60_000, DUPLICADA_MS);
+    for (const [k, m] of e.conteudos) {
+      for (const [c, t] of m) if (agora - t > janela) m.delete(c);
+      if (!m.size) e.conteudos.delete(k);
+    }
 
     // Mesma mensagem para o mesmo contato há pouco: não manda de novo.
     const ja = e.recentes.get(chave);
     if (ja) {
       throw new HttpError(409, `Essa mesma mensagem já foi enviada para este contato há ${Math.max(1, Math.round((agora - ja) / 1000))} segundos. Para proteger o número, ela não foi enviada de novo.`);
     }
-    if (await pausaDe(instance)) throw new HttpError(429, "Este número foi pausado por segurança. O master pode liberar em Configurações.");
 
-    const c = contagem(instance);
-    const passou =
-      c.minuto >= l.por_minuto ? `Passou de ${l.por_minuto} mensagens em 1 minuto` :
-      c.hora >= l.por_hora ? `Passou de ${l.por_hora} mensagens em 1 hora` :
-      c.dia >= l.por_dia ? `Passou de ${l.por_dia} mensagens em 24 horas` : null;
-    if (passou) {
-      await pausar(instance, passou, l);
-      throw new HttpError(429, `${passou} por este número. Os envios foram pausados por ${l.pausa_min} minutos para proteger o WhatsApp contra bloqueio. O master pode liberar antes em Configurações.`);
+    // Mesma mensagem para muitos contatos diferentes em pouco tempo: é disparo em massa.
+    if (contaMassa) {
+      const quem = e.conteudos.get(assinatura);
+      const outros = quem ? [...quem.entries()].filter(([c, t]) => c !== contato && agora - t < l.massa_min * 60_000).length : 0;
+      if (outros >= l.massa_contatos - 1) {
+        await avisarMaster(instance, `Envio em massa barrado: a mesma mensagem já foi para ${outros} contatos em ${l.massa_min} minutos`);
+        throw new HttpError(429, `Essa mesma mensagem já foi enviada para ${outros} contatos diferentes nos últimos ${l.massa_min} minutos por este número. Para proteger o WhatsApp contra bloqueio, envio em massa não é permitido. Mude o texto para este cliente ou aguarde.`);
+      }
     }
 
-    // Intervalo entre mensagens, com variação (envios em ritmo de máquina chamam atenção).
+    // Pequeno intervalo entre mensagens, com variação (envios em ritmo de máquina chamam atenção).
     const espera = e.ultimo + l.intervalo_seg * 1000 * (1 + Math.random() * 0.8) - Date.now();
     if (espera > 0) await new Promise((r) => setTimeout(r, espera));
 
-    e.recentes.set(chave, Date.now());
+    const marcar = (t: number | null) => {
+      if (t === null) {
+        e.recentes.delete(chave);
+        e.conteudos.get(assinatura)?.delete(contato);
+        return;
+      }
+      e.recentes.set(chave, t);
+      if (contaMassa) {
+        if (!e.conteudos.has(assinatura)) e.conteudos.set(assinatura, new Map());
+        e.conteudos.get(assinatura)!.set(contato, t);
+      }
+    };
+    marcar(Date.now());
     e.ultimo = Date.now();
-    e.envios.push(Date.now());
     try {
-      return await enviar();
+      const r = await enviar();
+      e.envios.push(Date.now());
+      return r;
     } catch (err) {
       // Não saiu: pode tentar de novo.
-      e.recentes.delete(chave);
+      marcar(null);
       throw err;
     }
   });
