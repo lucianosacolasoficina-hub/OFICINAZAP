@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { publicUrl } from "@/lib/origin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { supabaseServer } from "@/lib/supabase/server";
+import { currentUser, supabaseServer } from "@/lib/supabase/server";
 
 // Entrada pelo sistema de gestão: quem já está logado lá entra direto aqui, sem digitar senha.
 // O sistema envia (POST) o token da sessão dele; conferimos esse token no Supabase do sistema
@@ -42,6 +42,23 @@ export async function POST(req: Request) {
   const supabase = await supabaseServer();
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (e2) return volta(req, "indisponivel");
+  const abrir = new URLSearchParams({ tel, nome });
+  if (rasc) abrir.set("r", rasc);
+  const destino = tel || rasc ? `/abrir?${abrir}` : v ? `/?v=${v}` : "/";
+  return NextResponse.redirect(publicUrl(req, destino), { status: 303 });
+}
+
+// Quando a entrada chega como link comum (GET), sem o token. Acontece, por exemplo, quando o
+// sistema de gestão está aberto dentro do app do Claude e a janela nova perde o envio (POST).
+// Antes isso dava "405" e a tela ficava em branco; agora, se a pessoa já está logada no
+// OficinaZap, entra direto (respeitando tel/nome/r/v se vierem no link); se não, vai para o login.
+export async function GET(req: Request) {
+  if (!(await currentUser())) return NextResponse.redirect(publicUrl(req, "/login"), { status: 303 });
+  const u = new URL(req.url).searchParams;
+  const v = (u.get("v") ?? "").replace(/[^a-z]/g, "").slice(0, 20);
+  const tel = (u.get("tel") ?? "").replace(/\D/g, "").slice(0, 15);
+  const nome = (u.get("nome") ?? "").slice(0, 80);
+  const rasc = (u.get("r") ?? "").replace(/[^0-9a-f-]/g, "").slice(0, 36);
   const abrir = new URLSearchParams({ tel, nome });
   if (rasc) abrir.set("r", rasc);
   const destino = tel || rasc ? `/abrir?${abrir}` : v ? `/?v=${v}` : "/";
