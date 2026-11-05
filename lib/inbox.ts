@@ -7,7 +7,10 @@ import { supabaseAdmin } from "./supabase/admin";
 export const VIEWS = ["todas", "minhas", "pendentes", "naolidas", "atendimento", "enviadas", "retomar", "grupos", "robo", "equipe", "fechadas", "atrasadas"] as const;
 export const QUEUES = ["todas", "minhas", "departamento", "geral"] as const;
 
-export type View = (typeof VIEWS)[number];
+/** Só para listar/contar por número (Central): "abertas" = tudo que não foi encerrado; "tudo" = inclusive encerradas. */
+export const VIEWS_NUMERO = ["abertas", "tudo"] as const;
+
+export type View = (typeof VIEWS)[number] | (typeof VIEWS_NUMERO)[number];
 export type Queue = (typeof QUEUES)[number];
 
 export type InboxFilter = {
@@ -68,7 +71,7 @@ export function parseFilter(params: URLSearchParams): InboxFilter {
   const view = params.get("view") as View;
   const queue = params.get("queue") as Queue;
   return {
-    view: VIEWS.includes(view) ? view : "todas",
+    view: (VIEWS as readonly string[]).includes(view) || (VIEWS_NUMERO as readonly string[]).includes(view) ? view : "todas",
     queue: QUEUES.includes(queue) ? queue : "todas",
     stage: params.get("stage"),
     department: params.get("department"),
@@ -117,6 +120,12 @@ export function applyFilter<T extends Filterable<T>>(query: T, f: InboxFilter, u
     case "todas":
       // Com um número escolhido, mostra todas as conversas dele (como no celular), inclusive as antigas encerradas.
       if (!f.connection || f.connection === "none") q = q.neq("status", "closed");
+      break;
+    case "abertas":
+      q = q.neq("status", "closed");
+      break;
+    case "tudo":
+      // Todas as conversas, como na lista do WhatsApp (atendente sem "ver tudo" continua sem ver as encerradas).
       break;
     case "minhas":
       q = q.neq("status", "closed").eq("assigned_to", userId);
@@ -218,13 +227,15 @@ export async function countAll(userId: string, base: InboxFilter, connIds: strin
     Promise.all(
       connIds.map(async (id) => {
         const b = { ...base, connection: id, stage: null, agent: null };
-        const [todas, pendentes, abertas, robo] = await Promise.all([
+        const [todas, pendentes, abertas, robo, ativas] = await Promise.all([
           count({ ...b, view: "todas" }),
           count({ ...b, view: "pendentes" }),
           count({ ...b, view: "todas" }, "open"),
           count({ ...b, view: "robo" }),
+          count({ ...b, view: "abertas" }),
         ]);
-        return [id, { todas, pendentes, abertas, robo }] as const;
+        // todas = inclusive encerradas; ativas = não encerradas; abertas = em atendimento (status "open").
+        return [id, { todas, pendentes, abertas, robo, ativas }] as const;
       }),
     ).then((l) => Object.fromEntries(l)),
   ]);

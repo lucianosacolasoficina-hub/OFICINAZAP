@@ -910,3 +910,19 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .aud-tr button:disabled { color: #8696a0; cursor: default; }
 .aud-tr small { color: #b42318; font-size: 11.5px; max-width: min(300px, 68vw); }
 .bubble .aud-txt + .meta-sp, .bubble .aud-tr + .meta-sp { display: block; height: 12px; }
+
+/* Central: cabeçalho enxuto da caixa (abas com contador + "Mais"), estilo WhatsApp Business / Chatwoot. */
+.cc-abas { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; min-width: 0; }
+.cc-abas button { font-size: 12.5px; padding: 4px 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; flex: none; }
+.cc-abas button:hover:not(.on) { border-color: var(--brand); color: var(--brand); }
+.cc-abas button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.cc-n { font-size: 11px; font-weight: 700; min-width: 18px; padding: 0 5px; border-radius: 99px; background: #eef2f0; color: #374151; line-height: 17px; text-align: center; }
+.cc-abas button.on .cc-n { background: rgba(255, 255, 255, .25); color: #fff; }
+.cc-abas button.alerta:not(.on) .cc-n { background: #f59e0b; color: #fff; }
+.cc-mais { font-size: 12.5px; padding: 3px 6px; border-radius: 99px; min-width: 0; flex: 1 1 60px; max-width: 150px; cursor: pointer; }
+.cc-mais.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.cc-max { padding: 2px 9px; font-size: 15px; }
+.cc-cols.grade .cc-abas button { font-size: 11.5px; padding: 2px 8px; }
+.cc-cols.grade .cc-mais { font-size: 11.5px; padding: 2px 4px; }
+.cc-item.fechada { opacity: .75; }
+.cc-carregar { display: block; width: calc(100% - 24px); margin: 8px 12px 12px; font-size: 12.5px; }
