@@ -154,3 +154,19 @@ export async function puxarHistorico(conn: Connection, dias: number) {
     await setSetting(chave, { ...andamento, status: "erro", erro: (err as Error).message });
   }
 }
+
+// Ao reconectar um número, o WhatsApp manda o histórico em dezenas de blocos de uma vez.
+// Gravar todos ao mesmo tempo esgotava a memória do servidor e o banco: aqui eles entram numa fila, um por vez.
+const gf = globalThis as unknown as { __filaHistorico?: Promise<unknown>; __filaHistoricoN?: number };
+export function naFilaDoHistorico(tarefa: () => Promise<void>): Promise<void> {
+  gf.__filaHistoricoN = (gf.__filaHistoricoN ?? 0) + 1;
+  const p = (gf.__filaHistorico ?? Promise.resolve())
+    .then(tarefa)
+    .catch((err) => console.error("Erro ao importar histórico", err))
+    .finally(() => {
+      gf.__filaHistoricoN = (gf.__filaHistoricoN ?? 1) - 1;
+    });
+  gf.__filaHistorico = p;
+  return p;
+}
+export const blocosDeHistoricoNaFila = () => gf.__filaHistoricoN ?? 0;

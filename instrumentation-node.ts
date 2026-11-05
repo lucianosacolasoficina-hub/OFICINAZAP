@@ -28,3 +28,11 @@ setTimeout(() => {
 setInterval(() => {
   recuperarPerdidas().catch((e) => console.error("recuperar mensagens", e));
 }, 2 * 60_000);
+
+// Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
+// para enxergar cedo se algo voltar a acumular.
+setInterval(() => {
+  const m = process.memoryUsage();
+  const mb = (n: number) => Math.round(n / 1048576);
+  console.log(`memória: total ${mb(m.rss)} MB, heap ${mb(m.heapUsed)}/${mb(m.heapTotal)} MB, externa ${mb(m.external)} MB`);
+}, 30 * 60_000);

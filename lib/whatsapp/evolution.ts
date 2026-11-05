@@ -57,8 +57,9 @@ export class EvolutionProvider implements WhatsAppProvider {
   private async call<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<{ status: number; data: T }> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
-      // Consultas rápidas têm prazo: se a Evolution estiver ocupada, a tela não fica minutos esperando.
-      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+      // Toda chamada tem prazo: se a Evolution travar, o pedido não fica preso para sempre no servidor
+      // (pedidos presos acumulam memória e travam as tarefas automáticas, como as fotos e a conferência).
+      signal: AbortSignal.timeout(timeoutMs ?? 45_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -234,7 +235,7 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   /** Conversas que a Evolution guardou para este número. */
   async findChats(): Promise<{ remoteJid: string; name?: string | null; pushName?: string | null; updatedAt?: string | null }[]> {
-    const { status, data } = await this.call<unknown>("POST", `/chat/findChats/${this.instance}`, {});
+    const { status, data } = await this.call<unknown>("POST", `/chat/findChats/${this.instance}`, {}, 120_000);
     if (status >= 400 || !Array.isArray(data)) return [];
     return data as { remoteJid: string; name?: string | null; pushName?: string | null; updatedAt?: string | null }[];
   }
@@ -318,7 +319,7 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   /** Link da foto de perfil do contato ou do grupo (null quando não tem ou está oculta). */
   async profilePicture(number: string): Promise<string | null> {
-    const { status, data } = await this.call<{ profilePictureUrl?: string | null }>("POST", `/chat/fetchProfilePictureUrl/${this.instance}`, { number });
+    const { status, data } = await this.call<{ profilePictureUrl?: string | null }>("POST", `/chat/fetchProfilePictureUrl/${this.instance}`, { number }, 15_000);
     if (status >= 400) return null;
     const u = data?.profilePictureUrl;
     return typeof u === "string" && /^https:\/\//.test(u) ? u : null;
@@ -327,6 +328,7 @@ export class EvolutionProvider implements WhatsAppProvider {
   async sendText(phone: string, text: string) {
     const res = await fetch(`${this.baseUrl}/message/sendText/${this.instance}`, {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: JSON.stringify({ number: phone, text }),
     });
@@ -339,6 +341,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     const ext = file.mimeType.split("/")[1] || "png";
     const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
       method: "POST",
+      signal: AbortSignal.timeout(90_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: JSON.stringify({
         number: phone,
@@ -357,6 +360,7 @@ export class EvolutionProvider implements WhatsAppProvider {
   async sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string) {
     const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
       method: "POST",
+      signal: AbortSignal.timeout(90_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: JSON.stringify({
         number: phone,
@@ -376,6 +380,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     if (!msg.mediaRef) return null;
     const res = await fetch(`${this.baseUrl}/chat/getBase64FromMediaMessage/${this.instance}`, {
       method: "POST",
+      signal: AbortSignal.timeout(60_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
       body: JSON.stringify({ message: { key: { id: msg.mediaRef } }, convertToMp4: false }),
     });

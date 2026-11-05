@@ -3,7 +3,7 @@ import { handleIncoming } from "@/lib/inbound";
 import { whatsapp } from "@/lib/whatsapp";
 import { EvolutionProvider } from "@/lib/whatsapp/evolution";
 import { connectionByInstance, religarConversas, updateConnection } from "@/lib/connections";
-import { importarMensagens, registrarEnviada } from "@/lib/historico";
+import { importarMensagens, naFilaDoHistorico, registrarEnviada } from "@/lib/historico";
 import { completarLid } from "@/lib/recuperar";
 
 export const maxDuration = 60;
@@ -64,15 +64,14 @@ export async function POST(req: Request) {
   // Conversas antigas (histórico) que o WhatsApp manda logo depois de conectar.
   const hist = EvolutionProvider.parseHistorySet(payload);
   if (hist.msgs.length) {
-    after(async () => {
-      try {
+    // Um bloco por vez (ver naFilaDoHistorico): vários ao mesmo tempo derrubavam o servidor.
+    after(() =>
+      naFilaDoHistorico(async () => {
         const conn = await connectionByInstance(hist.instance ?? instance ?? "");
         if (conn) await religarConversas(conn).catch(() => 0);
         if (conn) await importarMensagens(conn, hist.msgs);
-      } catch (err) {
-        console.error("Erro ao importar histórico", err);
-      }
-    });
+      }),
+    );
     return NextResponse.json({ ok: true, historico: hist.msgs.length });
   }
   // Enviada pelo celular do número (fromMe): guarda como mensagem enviada.
