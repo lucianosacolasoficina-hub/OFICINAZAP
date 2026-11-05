@@ -82,6 +82,8 @@ export function allPerms(agent: Agent | null): Record<PermKey, boolean> {
 export function permFor(method: string, path: string): PermKey | "admin" | null {
   const escrita = method !== "GET";
   if (path.startsWith("/api/team")) return "admin";
+  // Trava de envio do WhatsApp: todos veem o aviso; só o administrador muda limites ou libera número.
+  if (path.startsWith("/api/trava") && escrita) return "admin";
   // Cadastrar ou apagar número de WhatsApp: só o administrador.
   if (path === "/api/whatsapp" && escrita) return "admin";
   if (/^\/api\/whatsapp\/[^/]+$/.test(path) && method === "DELETE") return "admin";

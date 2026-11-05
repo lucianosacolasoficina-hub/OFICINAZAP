@@ -867,3 +867,8 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .composer .foto-pre.rasc{border-color:#25d366;background:color-mix(in srgb,#25d366 10%,var(--panel))}
 .composer .foto-pre.rasc a,.rasc-chip a{color:var(--accent,#128c7e);font-weight:600}
 .rasc-chip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border:1px solid #25d366;border-radius:10px;background:color-mix(in srgb,#25d366 10%,var(--panel));font-size:13px}
+
+/* Aviso da proteção do WhatsApp (só para o master) */
+.trava-aviso { position: fixed; top: 0; left: 0; right: 0; z-index: 900; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; padding: 8px 16px; background: #c0392b; color: #fff; font-size: 14px; }
+.trava-aviso a { color: #fff; font-weight: 700; text-decoration: underline; }
+.trava-aviso button { background: #fff; color: #c0392b; border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-weight: 600; }
