@@ -130,10 +130,16 @@ export async function puxarHistorico(conn: Connection, dias: number) {
           await setSetting(chave, { ...andamento, status: "parado", fim: new Date().toISOString() });
           return;
         }
-        const { data, error } = await db.rpc("zap_historico_lote", {
-          p_instance: instancia, p_desde: desde, p_apos_ts: aposTs, p_apos_id: aposId, p_limite: 300,
-        });
-        if (error) throw new Error(error.message);
+        // Falha passageira do banco (resposta cortada, tempo limite): tenta o mesmo lote de novo.
+        let data: unknown[] | null = null;
+        for (let t = 1; ; t++) {
+          const r = await db.rpc("zap_historico_lote", {
+            p_instance: instancia, p_desde: desde, p_apos_ts: aposTs, p_apos_id: aposId, p_limite: 300,
+          });
+          if (!r.error) { data = r.data as unknown[]; break; }
+          if (t === 4) throw new Error(r.error.message);
+          await new Promise((res) => setTimeout(res, 5000 * t));
+        }
         const linhas = (data ?? []) as { ts: number; id: string; rec: Parameters<typeof EvolutionProvider.parseRecord>[0] | null }[];
         if (!linhas.length) break;
         aposTs = linhas[linhas.length - 1].ts;
