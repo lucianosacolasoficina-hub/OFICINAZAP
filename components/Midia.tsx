@@ -200,3 +200,38 @@ export function AudioPlayer({ src, carregarAntes = true }: { src: string; carreg
     </div>
   );
 }
+
+/** Texto do áudio embaixo do player: aparece pronto ou com o botão "Transcrever". */
+export function Transcricao({ conversa, msg, inicial }: { conversa: string; msg: string; inicial: string | null }) {
+  const [texto, setTexto] = useState(inicial);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    if (inicial) setTexto(inicial);
+  }, [inicial]);
+  async function transcrever() {
+    setBusy(true);
+    setErro("");
+    try {
+      const r = await fetch(`/api/conversations/${conversa}/transcrever`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ msg }),
+      });
+      const d = (await r.json().catch(() => ({}))) as { texto?: string; error?: string };
+      if (!r.ok) throw new Error(d.error || "não consegui transcrever");
+      setTexto(d.texto ?? "");
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (texto) return <div className="aud-txt">📝 {texto}</div>;
+  return (
+    <div className="aud-tr">
+      <button type="button" onClick={transcrever} disabled={busy}>{busy ? "Transcrevendo…" : "📝 Transcrever"}</button>
+      {erro && <small>{erro}</small>}
+    </div>
+  );
+}

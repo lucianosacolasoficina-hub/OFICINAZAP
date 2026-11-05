@@ -40,6 +40,8 @@ export type Message = {
   media_type: string | null;
   media_url: string | null;
   wa_message_id: string | null;
+  /** Texto do áudio (voz → texto). */
+  transcricao?: string | null;
   created_at: string;
 };
 

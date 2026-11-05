@@ -904,3 +904,9 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .aud-vel { flex: none; border: 0; background: rgba(0,0,0,.08); color: #3b4a54; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 4px 8px; cursor: pointer; }
 .aud.erro .aud-meio small { color: #b42318; }
 .bubble .aud + .meta-sp, .bubble .pdf-mini + .meta-sp, .bubble .media-btn + .meta-sp { display: block; height: 12px; }
+.aud-txt { font-size: 13.5px; color: #3b4a54; background: rgba(0,0,0,.04); border-radius: 8px; padding: 6px 9px; margin: 2px 0 4px; white-space: pre-wrap; max-width: min(300px, 68vw); }
+.aud-tr { display: flex; flex-direction: column; gap: 2px; margin: 0 0 2px; }
+.aud-tr button { align-self: flex-start; border: 0; background: none; color: #027eb5; font-size: 12.5px; font-weight: 600; padding: 2px 0; cursor: pointer; }
+.aud-tr button:disabled { color: #8696a0; cursor: default; }
+.aud-tr small { color: #b42318; font-size: 11.5px; max-width: min(300px, 68vw); }
+.bubble .aud-txt + .meta-sp, .bubble .aud-tr + .meta-sp { display: block; height: 12px; }

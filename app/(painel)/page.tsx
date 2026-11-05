@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { AudioPlayer, PdfAmpliado, PdfMiniatura } from "@/components/Midia";
+import { AudioPlayer, PdfAmpliado, PdfMiniatura, Transcricao } from "@/components/Midia";
 import { useMe } from "@/lib/useMe";
 import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
@@ -1450,7 +1450,10 @@ function Chat({
                     <img src={mediaUrl} alt="imagem" className={m.media_type === "sticker" ? "media sticker" : "media"} loading="lazy" onError={marcarFalha} />
                   </button>
                 ) : m.media_type === "audio" && mediaUrl ? (
-                  <AudioPlayer src={mediaUrl} carregarAntes={guardado} />
+                  <>
+                    <AudioPlayer src={mediaUrl} carregarAntes={guardado} />
+                    <Transcricao conversa={m.conversation_id} msg={m.id} inicial={m.transcricao ?? null} />
+                  </>
                 ) : m.media_type === "video" && mediaUrl ? (
                   <video className="media" controls preload={guardado ? "metadata" : "none"} src={mediaUrl} onError={marcarFalha} />
                 ) : ehPdf && mediaUrl ? (

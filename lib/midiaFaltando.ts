@@ -36,5 +36,8 @@ export async function guardarMidiaPorWaId(waMessageId: string) {
     .select("id, conversation_id, media_type, media_url, wa_message_id")
     .eq("wa_message_id", waMessageId)
     .maybeSingle();
-  if (data?.media_type && !data.media_url) await buscarMidiaFaltando(data as Linha);
+  if (!data) return null;
+  const m = data as Linha;
+  if (m.media_type && !m.media_url) m.media_url = await buscarMidiaFaltando(m);
+  return m;
 }

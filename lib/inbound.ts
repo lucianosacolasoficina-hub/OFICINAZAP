@@ -18,6 +18,7 @@ import {
 } from "./db";
 import { consultarGestao, gestaoAtiva, resumoParaIA } from "./gestao";
 import { loadMedia, saveMedia } from "./media";
+import { transcreverMensagem, transcricaoLigada } from "./transcrever";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
 import { avisarMaster, getLimites } from "./whatsapp/trava";
 import { supabaseAdmin } from "./supabase/admin";
@@ -49,6 +50,10 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
       const file = await whatsapp(instance).downloadMedia(msg);
       const path = file && (await saveMedia(conversation.id, saved.id, file));
       if (path) await setMessageMedia(saved.id, path);
+      // Áudio do cliente já vira texto (quando a transcrição está ligada).
+      if (path && msg.mediaType === "audio" && transcricaoLigada()) {
+        transcreverMensagem({ ...saved, media_url: path }).catch((err) => console.error("Falha ao transcrever", msg.waMessageId, err));
+      }
     } catch (err) {
       console.error("Falha ao baixar mídia", msg.waMessageId, err);
     }
