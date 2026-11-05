@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { AudioPlayer, PdfAmpliado, PdfMiniatura } from "@/components/Midia";
 import { useMe } from "@/lib/useMe";
 import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
@@ -1127,6 +1128,9 @@ function Chat({
   const [arqTab, setArqTab] = useState<"fotos" | "docs" | "audios" | "links">("fotos");
   const [busca, setBusca] = useState<string | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
+  const [zoomPdf, setZoomPdf] = useState<string | null>(null);
+  // Arquivos que o WhatsApp não devolveu mais: ficam só com o ícone.
+  const [falhou, setFalhou] = useState<Set<string>>(() => new Set());
   const arquivos = useMemo(() => {
     const out = { fotos: [] as Message[], docs: [] as Message[], audios: [] as Message[], links: [] as { url: string; m: Message }[] };
     for (const m of messages) {
@@ -1138,11 +1142,15 @@ function Chat({
     return out;
   }, [messages]);
   useEffect(() => {
-    if (!zoom) return;
-    const f = (e: KeyboardEvent) => e.key === "Escape" && setZoom(null);
+    if (!zoom && !zoomPdf) return;
+    const f = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setZoom(null);
+      setZoomPdf(null);
+    };
     window.addEventListener("keydown", f);
     return () => window.removeEventListener("keydown", f);
-  }, [zoom]);
+  }, [zoom, zoomPdf]);
   const qBusca = (busca ?? "").trim().toLowerCase();
   const achados = qBusca.length >= 2 ? messages.filter((m) => m.body?.toLowerCase().includes(qBusca)).length : 0;
   const [lula, setLula] = useState<{ open: boolean; busy: boolean; out: string; acao: string; q: string }>({ open: false, busy: false, out: "", acao: "", q: "" });
@@ -1417,23 +1425,36 @@ function Chat({
             prev.sender !== "system" &&
             prev.direction === m.direction &&
             new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
-          const mediaUrl = m.media_url && `/api/media?path=${encodeURIComponent(m.media_url)}`;
+          // Arquivo guardado, ou (enviado pelo celular / histórico) buscado no WhatsApp na hora de mostrar.
+          const guardado = !!m.media_url;
+          const mediaUrl = m.media_url
+            ? `/api/media?path=${encodeURIComponent(m.media_url)}`
+            : m.media_type && m.wa_message_id && !falhou.has(m.id)
+            ? `/api/media?msg=${m.id}`
+            : null;
           const label = m.media_type && !mediaUrl ? MEDIA_TEXT[m.media_type] ?? `[${m.media_type}]` : null;
           // Corpo que é só "[image]" (sem o arquivo) vira o texto com ícone.
-          const body = /^\[(image|audio|video|document|sticker)\]$/.test(m.body.trim()) ? "" : m.body;
+          const body0 = /^\[(image|audio|video|document|sticker)\]$/.test(m.body.trim()) ? "" : m.body;
+          const ehPdf = m.media_type === "document" && (/\.pdf$/i.test(m.media_url ?? "") || /\.pdf\b/i.test(m.body));
+          const nomePdf = ehPdf ? (m.body.match(/[^\n]*?([^\s/\\]+\.pdf)\b/i)?.[1] ?? "Documento.pdf") : "";
+          // O nome do PDF já aparece no cartão da miniatura.
+          const body = ehPdf && mediaUrl && body0.replace(/^📄\s*/, "").trim() === nomePdf ? "" : body0;
+          const marcarFalha = () => !guardado && setFalhou((f) => new Set(f).add(m.id));
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {sep}
               <div className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}`}>
-                {m.media_type === "image" && mediaUrl ? (
+                {(m.media_type === "image" || m.media_type === "sticker") && mediaUrl ? (
                   <button type="button" className="media-btn" onClick={() => setZoom(mediaUrl)} title="Ampliar">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mediaUrl} alt="imagem" className="media" loading="lazy" />
+                    <img src={mediaUrl} alt="imagem" className={m.media_type === "sticker" ? "media sticker" : "media"} loading="lazy" onError={marcarFalha} />
                   </button>
                 ) : m.media_type === "audio" && mediaUrl ? (
-                  <audio className="media-audio" controls preload="none" src={mediaUrl} />
+                  <AudioPlayer src={mediaUrl} carregarAntes={guardado} />
                 ) : m.media_type === "video" && mediaUrl ? (
-                  <video className="media" controls preload="metadata" src={mediaUrl} />
+                  <video className="media" controls preload={guardado ? "metadata" : "none"} src={mediaUrl} onError={marcarFalha} />
+                ) : ehPdf && mediaUrl ? (
+                  <PdfMiniatura src={mediaUrl} nome={nomePdf} onAbrir={() => setZoomPdf(mediaUrl)} />
                 ) : m.media_type && mediaUrl ? (
                   <a className="media-link" href={mediaUrl} target="_blank" rel="noreferrer">
                     {MEDIA_TEXT[m.media_type] ?? "📎 Arquivo"} · abrir
@@ -1526,6 +1547,16 @@ function Chat({
           </span>
         </div>
       )}
+      {zoomPdf && (
+        <div className="zoom-bg zoom-pdf" onClick={() => setZoomPdf(null)} role="dialog" aria-label="PDF ampliado">
+          <span className="zoom-acts" onClick={(e) => e.stopPropagation()}>
+            <a href={zoomPdf} target="_blank" rel="noreferrer">Abrir em nova aba ↗</a>
+            <a href={zoomPdf} download>⬇ Baixar</a>
+            <button onClick={() => setZoomPdf(null)}>× Fechar</button>
+          </span>
+          <PdfAmpliado src={zoomPdf} />
+        </div>
+      )}
 
       {c.status !== "closed" && !c.contact.is_group && c.last_from_me && Date.now() - new Date(c.last_message_at).getTime() > retomarDias * 864e5 && (
         <div className="retomar-bar">
@@ -1583,7 +1614,9 @@ function Chat({
           />
           {foto && (
             <div className="foto-pre">
-              {foto.doc ? <span className="doc-ico">📄</span> : <img src={foto.url} alt="Foto para enviar" />}
+              {foto.doc && /\.pdf$/i.test(foto.file.name) ? (
+                <PdfMiniatura src={foto.url} nome={foto.file.name} onAbrir={() => setZoomPdf(foto.url)} />
+              ) : foto.doc ? <span className="doc-ico">📄</span> : <img src={foto.url} alt="Foto para enviar" />}
               <span className="muted">
                 {foto.doc ? <><b>{foto.file.name}</b> ({fmtKb(foto.file.size)}) pronto. Escreva uma mensagem se quiser e clique em Enviar.</> : "Foto pronta. Escreva uma legenda se quiser e clique em Enviar."}
               </span>
