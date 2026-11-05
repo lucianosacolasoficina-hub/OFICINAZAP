@@ -7,14 +7,19 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export const GET = route(async (_req, _ctx, userId) => {
   requireEvolution();
   const liberados = canaisDe(await getAgent(userId));
-  const [connections, departments] = await Promise.all([
+  const [connections, departments, soltas] = await Promise.all([
     listConnections().then((l) => l.filter((c) => !liberados || liberados.includes(c.id))),
     supabaseAdmin().from("departments").select("id, name").order("name"),
+    // Conversas sem número (card apagado): não aparecem para os atendentes. Só o administrador vê o aviso.
+    liberados
+      ? Promise.resolve({ count: 0 })
+      : supabaseAdmin().from("conversations").select("id", { count: "exact", head: true }).is("connection_id", null),
   ]);
   return {
     connections: await Promise.all(connections.filter((c) => !c.channel || c.channel === "whatsapp").map(syncState)),
     departments: departments.data ?? [],
     max: MAX_CONNECTIONS,
+    soltas: soltas.count ?? 0,
   };
 });
 

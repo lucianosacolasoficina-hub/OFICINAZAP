@@ -15,7 +15,7 @@ type Connection = {
   state: string;
 };
 type Department = { id: string; name: string };
-type Data = { connections: Connection[]; departments: Department[]; max: number };
+type Data = { connections: Connection[]; departments: Department[]; max: number; soltas?: number };
 
 const STATE_LABEL: Record<string, string> = {
   open: "Conectado",
@@ -271,7 +271,7 @@ function ConnectionCard({
 
   async function remove() {
     setMenu(false);
-    if (!confirm(`Excluir "${conn.name}"? O número é desconectado e sai da lista. As conversas antigas continuam no sistema.`)) return;
+    if (!confirm(`Excluir "${conn.name}"? O número é desconectado e sai da lista.\n\nSe for só para ler o QR Code de novo, cancele e use "Desconectar": assim as conversas continuam no card. Se excluir, as conversas voltam sozinhas quando o mesmo celular for conectado num card novo.`)) return;
     await api(`/api/whatsapp/${conn.id}`, { method: "DELETE" }).catch((e) => alert(e.message));
     onChanged();
   }
@@ -416,6 +416,12 @@ export default function WhatsAppPage() {
         </span>
       </div>
       {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {!!data.soltas && (
+        <p style={{ background: "#fdecea", color: "#8a1c12", padding: "10px 12px", borderRadius: 8 }}>
+          ⚠️ {data.soltas} conversa(s) estão sem número de WhatsApp e não aparecem para os atendentes. Isso acontece quando um card é
+          excluído. Para trocar o celular de um número, use <b>Desconectar</b> e leia o QR Code de novo no mesmo card.
+        </p>
+      )}
 
       <InstagramSetup />
       <GmailSetup />
