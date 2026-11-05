@@ -1,5 +1,5 @@
 import { isAgentImageType, runAgent, type AgentImage } from "./ai/agent";
-import { connectionByInstance } from "./connections";
+import { connectionByInstance, listConnections } from "./connections";
 import { ensureDeal } from "./deals";
 import {
   activeConversation,
@@ -20,11 +20,14 @@ import { consultarGestao, gestaoAtiva, resumoParaIA } from "./gestao";
 import { loadMedia, saveMedia } from "./media";
 import { transcreverMensagem, transcricaoLigada } from "./transcrever";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
+import { avisarMaster, getLimites } from "./whatsapp/trava";
+import { supabaseAdmin } from "./supabase/admin";
 
 // Espera o cliente terminar de digitar várias mensagens seguidas antes de a IA responder.
 const DEBOUNCE_MS = Number(process.env.AI_DEBOUNCE_MS ?? 4000);
 
-export async function handleIncoming(msg: IncomingMessage) {
+/** `robo: false` = só guarda a mensagem (usado na conferência para mensagens que já não são recentes). */
+export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolean } = {}) {
   const botEnabled = await getSetting<boolean>("bot_enabled", true);
   // Com vários números, a conversa fica ligada ao número que recebeu a mensagem e a resposta sai por ele.
   const connection = msg.instance ? await connectionByInstance(msg.instance) : null;
@@ -57,12 +60,35 @@ export async function handleIncoming(msg: IncomingMessage) {
   }
 
   if (conversation.status !== "bot" || !botEnabled) return;
+  if (opts.robo === false) {
+    await updateConversation(conversation.id, { status: "waiting" });
+    return;
+  }
+  // Mensagem de outro número da própria empresa: o robô nunca responde (um robô respondendo o outro vira ciclo sem fim).
+  if (!msg.isGroup && (await ehNumeroDaEmpresa(contact.phone))) {
+    await updateConversation(conversation.id, { status: "waiting" });
+    return;
+  }
 
   await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
   const history = await recentMessages(conversation.id);
   const latest = history[history.length - 1];
   // Chegou outra mensagem depois desta: quem responde é o processamento dela.
   if (latest && latest.id !== saved.id) return;
+
+  // Robô respondendo demais na mesma conversa (o outro lado pode ser outro robô): para e chama um atendente.
+  const limites = await getLimites();
+  const { count: respostas } = await supabaseAdmin()
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("conversation_id", conversation.id)
+    .eq("sender", "bot")
+    .gte("created_at", new Date(Date.now() - 10 * 60_000).toISOString());
+  if ((respostas ?? 0) >= limites.robo_10min) {
+    await pararRobo(conversation.id, `IA parou: já respondeu ${respostas} vezes em 10 minutos nesta conversa (pode ser outro robô do outro lado). Um atendente precisa assumir.`);
+    await avisarMaster(instance ?? "", `IA parou na conversa com ${contact.name || contact.phone}: ${respostas} respostas em 10 minutos (possível conversa robô com robô)`);
+    return;
+  }
 
   const [knowledgeBase, quote, departments] = await Promise.all([
     getSetting<string>("knowledge_base", ""),
@@ -101,7 +127,14 @@ export async function handleIncoming(msg: IncomingMessage) {
     await ensureDeal(contact.id, conversation.id, String(title));
   }
   if (result.reply) {
-    const sent = await whatsapp(instance).sendText(contact.phone, result.reply);
+    let sent: { waMessageId?: string };
+    try {
+      sent = await whatsapp(instance).sendText(contact.phone, result.reply);
+    } catch (err) {
+      // Trava de envio (número pausado, limite, mensagem repetida) ou falha da Evolution: um atendente assume.
+      await pararRobo(conversation.id, `IA não enviou a resposta: ${err instanceof Error ? err.message : "falha no envio"}`);
+      return;
+    }
     await addMessage(conversation.id, {
       direction: "out",
       sender: "bot",
@@ -120,6 +153,23 @@ export async function handleIncoming(msg: IncomingMessage) {
       body: `IA transferiu para atendimento humano: ${result.handoff}`,
     });
   }
+}
+
+async function pararRobo(conversationId: string, motivo: string) {
+  await updateConversation(conversationId, { status: "waiting" });
+  await addMessage(conversationId, { direction: "out", sender: "system", body: motivo });
+}
+
+// Números conectados no OficinaZap (guardados por 1 minuto).
+let numerosCache: { t: number; v: string[] } | null = null;
+async function ehNumeroDaEmpresa(phone: string) {
+  if (!numerosCache || Date.now() - numerosCache.t > 60_000) {
+    const conns = await listConnections().catch(() => []);
+    numerosCache = { t: Date.now(), v: conns.map((c) => (c.phone ?? "").replace(/\D/g, "")).filter((p) => p.length >= 8) };
+  }
+  // Compara os 8 últimos dígitos (o 9 extra do celular pode vir ou não).
+  const fim = phone.replace(/\D/g, "").slice(-8);
+  return fim.length === 8 && numerosCache.v.some((p) => p.slice(-8) === fim);
 }
 
 /** Contato do grupo; na primeira mensagem busca o nome do grupo no WhatsApp. */

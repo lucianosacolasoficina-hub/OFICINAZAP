@@ -49,9 +49,11 @@ export async function recuperarPerdidas(deSeg = 3 * 3600, ateSeg = 90) {
         if (msg.fromMe) {
           await registrarEnviada(conn, msg);
         } else if (Date.now() / 1000 - msg.ts < 10 * 60) {
-          // Ainda é recente: entra como se tivesse acabado de chegar (avisa, baixa mídia, IA responde).
+          // Ainda é recente: entra como se tivesse acabado de chegar (avisa, baixa mídia).
+          // A IA só responde se a mensagem tem menos de 3 minutos; mais velha, fica para um atendente.
+          // A conferência nunca reenvia nada ao cliente: só traz o que faltou para dentro do OficinaZap.
           const [inc] = new EvolutionProvider(instance).parseWebhook({ event: "messages.upsert", instance, data: rec });
-          if (inc) await handleIncoming({ ...inc, instance });
+          if (inc) await handleIncoming({ ...inc, instance }, { robo: Date.now() / 1000 - msg.ts < 3 * 60 });
         } else {
           // Mais antiga: entra no horário certo e a conversa fica aguardando atendimento.
           await importarMensagens(conn, [msg]);
