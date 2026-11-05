@@ -11,6 +11,6 @@ export async function GET(req: Request) {
   const email = u?.email?.trim().toLowerCase();
   if (!email) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   const w = Math.min(25, Math.max(0, Number(new URL(req.url).searchParams.get("wait") ?? "25") || 0));
-  const itens = await esperar(email, w * 1000);
+  const itens = await esperar(email, w * 1000, req.signal);
   return NextResponse.json({ itens }, { headers: { "Cache-Control": "no-store" } });
 }

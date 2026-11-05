@@ -29,7 +29,7 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   // O sistema de gestão deixa rascunhos (texto + PDF) aqui com o token dele, sem login do OficinaZap.
-  const rascunhoDaGestao = (path === "/api/rascunhos" || path === "/api/rascunhos/presenca") && (request.method === "POST" || request.method === "OPTIONS");
+  const rascunhoDaGestao = (path === "/api/rascunhos" || path === "/api/rascunhos/presenca" || path === "/api/rascunhos/abrir") && (request.method === "POST" || request.method === "OPTIONS");
   if (!data.user && !rascunhoDaGestao && path !== "/login" && path !== "/api/auth/sso" && path !== "/api/lula" && path !== "/api/gestao/candace" && path !== "/privacidade" && path !== "/exclusao-de-dados") {
     if (path.startsWith("/api/")) {
       return NextResponse.json({ error: "não autenticado" }, { status: 401 });

@@ -176,46 +176,33 @@ export default function InboxPage() {
   const [list, setList] = useState<ConvRow[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  // OficinaZap aberto recebe na hora os rascunhos do sistema de gestão (espera longa, sem abrir outra janela).
+  // O sistema de gestão pediu para abrir algo neste OficinaZap já aberto (conversa do cliente,
+  // rascunho pronto ou uma lista). Quem escuta o servidor é o GestaoAoVivo (no layout); aqui só abre.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("embed") === "1") return;
-    try { window.name = "oficinazap"; } catch {}
-    let vivo = true;
-    const dorme = (ms: number) => new Promise((s) => setTimeout(s, ms));
-    (async () => {
-      while (vivo) {
-        try {
-          const r = await fetch("/api/rascunhos/fila?wait=25", { cache: "no-store" });
-          if (r.status === 401) { await dorme(30000); continue; }
-          if (!r.ok) { await dorme(5000); continue; }
-          const j = (await r.json()) as { itens?: { id: string; tel: string; nome: string }[] };
-          const it = (j.itens ?? [])[0];
-          if (!it || !vivo) continue;
-          try {
-            if ("Notification" in window && Notification.permission === "granted") {
-              const n = new Notification("OficinaZap · mensagem pronta", { body: `Para ${it.nome || it.tel || "o cliente"}: confira e toque em Enviar.`, tag: "rasc-" + it.id });
-              n.onclick = () => window.focus();
-            }
-          } catch {}
-          try { document.title = "💬 Mensagem pronta · OficinaZap"; setTimeout(() => { document.title = "OficinaZap"; }, 15000); } catch {}
-          // Descobre a conversa do cliente (mesma regra do /abrir) e abre aqui mesmo, com o rascunho pronto.
-          const q = new URLSearchParams({ tel: it.tel || "", nome: it.nome || "", r: it.id });
-          const res = await fetch("/abrir?" + q.toString(), { cache: "no-store" }).catch(() => null);
-          const fu = res ? new URL(res.url) : null;
-          const c = fu?.searchParams.get("c");
-          const novo = fu?.searchParams.get("novo");
-          if (c) setSelected(c);
-          else if (novo || it.tel) { setNovoIni({ phone: novo || it.tel, name: it.nome || "" }); setNewChat(true); }
-          try { window.history.replaceState(null, "", "/?" + new URLSearchParams(c ? { c, r: it.id } : { r: it.id }).toString()); } catch {}
-          api<RascunhoUI>(`/api/rascunhos/${encodeURIComponent(it.id)}`).then(setRascunho).catch(() => {});
-          try { window.focus(); } catch {}
-        } catch {
-          await dorme(5000);
-        }
-      }
-    })();
-    return () => { vivo = false; };
-  }, []);
+    const abrir = async (ev: Event) => {
+      const it = (ev as CustomEvent<{ id: string; tel: string; nome: string; v?: string }>).detail;
+      if (!it) return;
+      if (it.v && VIEWS.some((x) => x.key === it.v)) setView(it.v);
+      if (!it.tel && !it.id) return;
+      // Descobre a conversa do cliente (mesma regra do /abrir) e abre aqui mesmo.
+      const q = new URLSearchParams({ tel: it.tel || "", nome: it.nome || "" });
+      if (it.id) q.set("r", it.id);
+      const res = await fetch("/abrir?" + q.toString(), { cache: "no-store" }).catch(() => null);
+      const fu = res ? new URL(res.url) : null;
+      const c = fu?.searchParams.get("c");
+      const novo = fu?.searchParams.get("novo");
+      if (c) setSelected(c);
+      else if (novo || it.tel) { setNovoIni({ phone: novo || it.tel, name: it.nome || "" }); setNewChat(true); }
+      const url = new URLSearchParams();
+      if (c) url.set("c", c);
+      if (it.id) url.set("r", it.id);
+      try { window.history.replaceState(null, "", url.toString() ? "/?" + url.toString() : "/"); } catch {}
+      if (it.id) api<RascunhoUI>(`/api/rascunhos/${encodeURIComponent(it.id)}`).then(setRascunho).catch(() => {});
+    };
+    window.addEventListener("oficinazap:abrir", abrir);
+    return () => window.removeEventListener("oficinazap:abrir", abrir);
+  }, [setView]);
   // Aberta dentro da Central (iframe ?embed=1): só a conversa e as ferramentas, sem a lista.
   const [embed, setEmbed] = useState(false);
   useEffect(() => {
