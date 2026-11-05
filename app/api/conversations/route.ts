@@ -6,16 +6,23 @@ import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const GET = route(async (req, _ctx, userId) => {
-  const filter = parseFilter(new URL(req.url).searchParams);
+  const sp = new URL(req.url).searchParams;
+  const filter = parseFilter(sp);
+  // Paginação: a Central carrega de 50 em 50 ao rolar (antes parava fixo em 150).
+  const limit = Math.min(Math.max(Number(sp.get("limit")) || 150, 1), 500);
+  const offset = Math.max(Number(sp.get("offset")) || 0, 0);
   const lookups = await loadLookups(userId, filter.stage ? [filter.stage] : [], filter.search);
   const query = supabaseAdmin()
     .from("conversations")
     .select(LIST_SELECT)
     // Quem espera há mais tempo aparece primeiro no alerta; em "Retomar", o orçamento mais antigo primeiro.
     .order(filter.view === "atrasadas" ? "waiting_since" : "last_message_at", { ascending: filter.view === "atrasadas" || filter.view === "retomar" })
-    .limit(150);
+    .order("id")
+    .range(offset, offset + limit - 1);
   const { data, error } = await applyFilter(query, filter, userId, lookups);
   if (error) throw new Error(error.message);
+  // A Central pagina e tira as repetidas do lado dela (para saber quando a lista acabou).
+  if (sp.get("dedup") === "0") return data ?? [];
   // Um cliente aparece uma vez por número: fica só a conversa mais recente (as antigas entram no histórico dela).
   const vistos = new Set<string>();
   return (data ?? []).filter((c) => {
