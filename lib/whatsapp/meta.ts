@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
+import type { Citacao, IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // API oficial do WhatsApp (Meta Cloud API).
 type MetaWebhook = {
@@ -71,11 +71,11 @@ export class MetaProvider implements WhatsAppProvider {
     return out;
   }
 
-  async sendText(phone: string, text: string) {
+  async sendText(phone: string, text: string, citar?: Citacao) {
     const res = await fetch(`${GRAPH_URL}/${this.phoneNumberId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ messaging_product: "whatsapp", to: phone, type: "text", text: { body: text } }),
+      body: JSON.stringify({ messaging_product: "whatsapp", to: phone, type: "text", text: { body: text }, ...(citar && { context: { message_id: citar.id } }) }),
     });
     if (!res.ok) throw new Error(`Meta API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { messages?: { id?: string }[] };

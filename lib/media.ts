@@ -40,3 +40,8 @@ export async function signedMediaUrl(path: string): Promise<string | null> {
   const { data, error } = await supabaseAdmin().storage.from(BUCKET).createSignedUrl(path, 3600);
   return error ? null : data.signedUrl;
 }
+
+/** Apaga um arquivo guardado (mensagem apagada pelo atendente). */
+export async function removeMedia(path: string) {
+  await supabaseAdmin().storage.from(BUCKET).remove([path]);
+}

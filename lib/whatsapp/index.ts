@@ -3,7 +3,7 @@ import { MetaProvider } from "./meta";
 import { comTrava } from "./trava";
 import type { WhatsAppProvider } from "./types";
 
-export type { IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
+export type { Citacao, IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // Troque de provedor mudando WHATSAPP_PROVIDER no .env ("evolution" ou "meta").
 // Com a Evolution API, cada número conectado é uma instância; sem instância usa a padrão do .env.

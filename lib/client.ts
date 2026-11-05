@@ -1,4 +1,8 @@
 // Utilitários usados nas telas (navegador).
+
+/** Texto que fica no lugar de uma mensagem apagada pelo atendente. */
+export const MSG_APAGADA = "🚫 Mensagem apagada";
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,

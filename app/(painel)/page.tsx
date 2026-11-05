@@ -16,6 +16,7 @@ import {
   formatSince,
   formatTime,
   initials,
+  MSG_APAGADA,
   STATUS_LABEL,
 } from "@/lib/client";
 import type { Contact, Conversation, ConversationStatus, Department, Message, QuoteData } from "@/lib/db";
@@ -1121,6 +1122,52 @@ function Chat({
     escolherFoto(item.getAsFile());
   }
   const [qrIndex, setQrIndex] = useState(0);
+  // Responder (citar) uma mensagem e menu de cada balão (Responder / Apagar).
+  const [respondendo, setRespondendo] = useState<Message | null>(null);
+  const [menuMsg, setMenuMsg] = useState<string | null>(null);
+  const [apagando, setApagando] = useState<string | null>(null);
+  const caixa = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    setRespondendo(null);
+    setMenuMsg(null);
+  }, [c.id]);
+  useEffect(() => {
+    if (!menuMsg) return;
+    const fechar = () => setMenuMsg(null);
+    window.addEventListener("click", fechar);
+    return () => window.removeEventListener("click", fechar);
+  }, [menuMsg]);
+  function responder(m: Message) {
+    setMenuMsg(null);
+    setRespondendo(m);
+    setTimeout(() => caixa.current?.focus(), 0);
+  }
+  async function apagar(m: Message) {
+    setMenuMsg(null);
+    const nossa = m.direction === "out" && !!m.wa_message_id;
+    const pergunta = nossa
+      ? "Apagar esta mensagem para todos?\n\nEla some também do WhatsApp do cliente (aparece \"Mensagem apagada\" para ele)."
+      : "Apagar esta mensagem só aqui no OficinaZap?\n\nO WhatsApp não deixa apagar mensagem do cliente: ela continua no celular dele.";
+    if (!window.confirm(pergunta)) return;
+    setApagando(m.id);
+    setError("");
+    try {
+      try {
+        await api(`/api/conversations/${c.id}/messages/${m.id}`, { method: "DELETE", body: JSON.stringify({}) });
+      } catch (e) {
+        if (!nossa) throw e;
+        // O WhatsApp recusou (passou do prazo ou número desconectado): oferece apagar só aqui.
+        if (!window.confirm(`${(e as Error).message}\n\nApagar só aqui no OficinaZap?`)) return;
+        await api(`/api/conversations/${c.id}/messages/${m.id}`, { method: "DELETE", body: JSON.stringify({ soAqui: true }) });
+      }
+      if (respondendo?.id === m.id) setRespondendo(null);
+      await onSent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não consegui apagar a mensagem");
+    } finally {
+      setApagando(null);
+    }
+  }
   const [pdOpen, setPdOpen] = useState(false);
   const [acoes, setAcoes] = useState(false);
   // Painel de arquivos da conversa, busca dentro da conversa e foto ampliada na própria tela.
@@ -1206,10 +1253,12 @@ function Chat({
         ...(anexo && !foto!.doc && { image: anexo }),
         ...(anexo && foto!.doc && { document: anexo }),
         ...(rascunho && !foto && { rascunho: rascunho.id }),
+        ...(respondendo && { replyTo: respondendo.id }),
       };
       await api(`/api/conversations/${c.id}/messages`, { method: "POST", body: JSON.stringify(payload) });
       setText("");
       tirarFoto();
+      setRespondendo(null);
       if (rascunho && !foto) onRascunhoFim?.();
       await onSent();
     } catch (e) {
@@ -1220,6 +1269,12 @@ function Chat({
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Escape" && respondendo) {
+      e.preventDefault();
+      e.stopPropagation();
+      setRespondendo(null);
+      return;
+    }
     if (qrMatches.length) {
       if (e.key === "ArrowDown") return (e.preventDefault(), setQrIndex((i) => (i + 1) % qrMatches.length));
       if (e.key === "ArrowUp") return (e.preventDefault(), setQrIndex((i) => (i - 1 + qrMatches.length) % qrMatches.length));
@@ -1440,11 +1495,50 @@ function Chat({
           // O nome do PDF já aparece no cartão da miniatura.
           const body = ehPdf && mediaUrl && body0.replace(/^📄\s*/, "").trim() === nomePdf ? "" : body0;
           const marcarFalha = () => !guardado && setFalhou((f) => new Set(f).add(m.id));
+          const apagada = m.body === MSG_APAGADA && !m.media_type;
+          const citada = m.reply_to ? messages.find((x) => x.id === m.reply_to) : null;
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {sep}
-              <div className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}`}>
-                {(m.media_type === "image" || m.media_type === "sticker") && mediaUrl ? (
+              <div id={`m-${m.id}`} className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}${apagada ? " apagada" : ""}${menuMsg === m.id ? " menu-on" : ""}`}>
+                {!apagada && (
+                  <span className="msg-acoes">
+                    <button
+                      type="button"
+                      className="msg-seta"
+                      title="Responder ou apagar"
+                      aria-label="Opções da mensagem"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuMsg(menuMsg === m.id ? null : m.id);
+                      }}
+                    >
+                      {apagando === m.id ? "…" : "⌄"}
+                    </button>
+                    {menuMsg === m.id && (
+                      <span className="msg-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+                        {c.status !== "closed" && <button type="button" role="menuitem" onClick={() => responder(m)}>↩ Responder</button>}
+                        <button type="button" role="menuitem" className="perigo" onClick={() => apagar(m)}>
+                          🗑 {m.direction === "out" && m.wa_message_id ? "Apagar para todos" : "Apagar só aqui"}
+                        </button>
+                      </span>
+                    )}
+                  </span>
+                )}
+                {citada && (
+                  <button
+                    type="button"
+                    className={`msg-cit ${citada.direction === "in" ? "in" : "out"}`}
+                    title="Ir para a mensagem respondida"
+                    onClick={() => document.getElementById(`m-${citada.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                  >
+                    <b>{citada.direction === "in" ? c.contact.name || "Cliente" : "Você"}</b>
+                    <span>{resumoMsg(citada)}</span>
+                  </button>
+                )}
+                {apagada ? (
+                  <i className="msg-apagada">{MSG_APAGADA}</i>
+                ) : (m.media_type === "image" || m.media_type === "sticker") && mediaUrl ? (
                   <button type="button" className="media-btn" onClick={() => setZoom(mediaUrl)} title="Ampliar">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={mediaUrl} alt="imagem" className={m.media_type === "sticker" ? "media sticker" : "media"} loading="lazy" onError={marcarFalha} />
@@ -1465,7 +1559,7 @@ function Chat({
                 ) : (
                   label && <div className="media-ph">{label}</div>
                 )}
-                {body && (() => {
+                {!apagada && body && (() => {
                   // Em grupo, "Nome: texto" vira o nome colorido em cima do texto.
                   const g = c.contact.is_group && m.direction === "in" ? body.match(/^([^:\n]{2,40}):\s([\s\S]*)$/) : null;
                   return g ? (
@@ -1629,6 +1723,16 @@ function Chat({
               <button type="button" onClick={tirarFoto} aria-label="Tirar anexo">×</button>
             </div>
           )}
+          {respondendo && !foto && !rascunho && (
+            <div className={`foto-pre resp-pre ${respondendo.direction === "in" ? "in" : "out"}`}>
+              <span>
+                <b>↩ Respondendo a {respondendo.direction === "in" ? c.contact.name || "cliente" : "você"}</b>
+                <br />
+                <span className="muted">{resumoMsg(respondendo)}</span>
+              </span>
+              <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta" title="Cancelar resposta (Esc)">×</button>
+            </div>
+          )}
           {!foto && rascunho && (
             <div className="foto-pre rasc">
               <span className="doc-ico">{rascunho.arquivo ? "📄" : "💬"}</span>
@@ -1648,6 +1752,7 @@ function Chat({
             </div>
           )}
           <textarea
+            ref={caixa}
             value={text}
             placeholder={foto ? (foto.doc ? "Mensagem junto com o arquivo (opcional)" : "Legenda da foto (opcional)") : c.status === "bot" ? "A IA está atendendo. Se você responder, assume a conversa." : "Digite uma mensagem ou / para respostas rápidas"}
             onChange={(e) => {
@@ -1838,6 +1943,14 @@ const MEDIA_TEXT: Record<string, string> = {
 };
 
 /** "Hoje", "Ontem", dia da semana (última semana) ou a data. */
+/** Pedaço da mensagem para mostrar na citação (resposta). */
+function resumoMsg(m: Message) {
+  const t = (m.body || "").replace(/^\[(image|audio|video|document|sticker)\]$/, "").trim();
+  const midia = m.media_type ? MEDIA_TEXT[m.media_type] ?? "📎 Arquivo" : "";
+  const txt = t || midia || "Mensagem";
+  return txt.length > 140 ? txt.slice(0, 140) + "…" : txt;
+}
+
 function dayLabel(iso: string) {
   const d = new Date(iso);
   const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();

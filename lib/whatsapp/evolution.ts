@@ -1,4 +1,4 @@
-import type { IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
+import type { Citacao, IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // Conexão não oficial via Evolution API (QR Code). Use num número secundário:
 // o WhatsApp pode banir números conectados dessa forma.
@@ -325,19 +325,29 @@ export class EvolutionProvider implements WhatsAppProvider {
     return typeof u === "string" && /^https:\/\//.test(u) ? u : null;
   }
 
-  async sendText(phone: string, text: string) {
+  /** Apaga para todos uma mensagem nossa (o WhatsApp só deixa nas primeiras ~48 horas). */
+  async deleteForEveryone(msg: Omit<Citacao, "text">) {
+    const { status, data } = await this.call("DELETE", `/chat/deleteMessageForEveryone/${this.instance}`, {
+      id: msg.id,
+      remoteJid: msg.remoteJid,
+      fromMe: msg.fromMe,
+    }, 30_000);
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+  }
+
+  async sendText(phone: string, text: string, citar?: Citacao) {
     const res = await fetch(`${this.baseUrl}/message/sendText/${this.instance}`, {
       method: "POST",
       signal: AbortSignal.timeout(30_000),
       headers: { "Content-Type": "application/json", apikey: this.apiKey },
-      body: JSON.stringify({ number: phone, text }),
+      body: JSON.stringify({ number: phone, text, ...citado(citar) }),
     });
     if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { key?: { id?: string } };
     return { waMessageId: data.key?.id };
   }
 
-  async sendImage(phone: string, file: MediaFile, caption?: string) {
+  async sendImage(phone: string, file: MediaFile, caption?: string, citar?: Citacao) {
     const ext = file.mimeType.split("/")[1] || "png";
     const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
       method: "POST",
@@ -350,6 +360,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         caption: caption ?? "",
         media: file.data.toString("base64"),
         fileName: `imagem.${ext}`,
+        ...citado(citar),
       }),
     });
     if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
@@ -357,7 +368,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { waMessageId: data.key?.id };
   }
 
-  async sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string) {
+  async sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string, citar?: Citacao) {
     const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
       method: "POST",
       signal: AbortSignal.timeout(90_000),
@@ -369,6 +380,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         caption: caption ?? "",
         media: file.data.toString("base64"),
         fileName,
+        ...citado(citar),
       }),
     });
     if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
@@ -396,6 +408,12 @@ export class EvolutionProvider implements WhatsAppProvider {
     if (!data.base64) return null;
     return { data: Buffer.from(data.base64, "base64"), mimeType: data.mimetype?.split(";")[0] || "application/octet-stream" };
   }
+}
+
+/** Campo "quoted" da Evolution: a resposta sai com a mensagem citada em cima, como no WhatsApp. */
+function citado(c?: Citacao) {
+  if (!c) return {};
+  return { quoted: { key: { id: c.id, remoteJid: c.remoteJid, fromMe: c.fromMe }, message: { conversation: c.text || " " } } };
 }
 
 // 15 MB de arquivo viram ~20 MB em base64; com folga para o resto da resposta.
