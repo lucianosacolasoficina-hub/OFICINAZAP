@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { notificar } from "@/lib/notificar";
 
 type Item = { id: string; tel: string; nome: string; v?: string };
 
@@ -54,12 +55,11 @@ export function GestaoAoVivo() {
 function avisar(it: Item) {
   const quem = it.nome || it.tel || "";
   try {
-    if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-      const n = new Notification(it.id ? "OficinaZap · mensagem pronta" : "OficinaZap", {
+    if (document.hidden) {
+      notificar(it.id ? "OficinaZap · mensagem pronta" : "OficinaZap", {
         body: it.id ? `Para ${quem || "o cliente"}: confira e toque em Enviar.` : quem ? `Conversa de ${quem} aberta.` : "Aberto pelo sistema de gestão.",
         tag: "gestao-" + (it.id || it.tel || it.v || "abrir"),
       });
-      n.onclick = () => window.focus();
     }
   } catch {}
   try {

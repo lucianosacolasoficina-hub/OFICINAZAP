@@ -34,9 +34,10 @@ export default function LoginPage() {
   return (
     <div className="login">
       <form onSubmit={submit}>
+        <img src="/icon-192.png" alt="" width={64} height={64} className="login-logo" />
         <h1>OficinaZap</h1>
-        <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input type="email" autoComplete="username" inputMode="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input type="password" autoComplete="current-password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
         {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
         <button className="primary" disabled={loading}>{loading ? "Entrando..." : "Entrar"}</button>
       </form>
