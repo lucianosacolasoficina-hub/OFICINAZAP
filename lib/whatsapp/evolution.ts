@@ -108,7 +108,12 @@ export class EvolutionProvider implements WhatsAppProvider {
   async restart() {
     let r = await this.call("POST", `/instance/restart/${this.instance}`);
     if (r.status === 404 || r.status === 405) r = await this.call("PUT", `/instance/restart/${this.instance}`);
-    if (r.status >= 400) throw new Error(`Evolution API ${r.status}: ${JSON.stringify(r.data)}`);
+    if (r.status >= 400 && !/not connected/i.test(JSON.stringify(r.data))) throw new Error(`Evolution API ${r.status}: ${JSON.stringify(r.data)}`);
+    // Quando a sessão já tinha caído, o "restart" da Evolution não abre outra: pede para ligar de novo
+    // com os dados salvos do celular (não precisa de QR Code se o celular ainda estiver vinculado).
+    await new Promise((res) => setTimeout(res, 3000));
+    const state = await this.connectionState().catch(() => "");
+    if (state !== "open") await this.call("GET", `/instance/connect/${this.instance}`, undefined, 20_000).catch(() => null);
     return r.data;
   }
 
