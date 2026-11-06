@@ -6,6 +6,7 @@ import { preencherFotos } from "./lib/fotos";
 import { retomarHistoricos } from "./lib/historico";
 import { baixarMidiasPendentes } from "./lib/midias";
 import { recuperarPerdidas } from "./lib/recuperar";
+import { vigiarNumeros } from "./lib/vigia";
 
 // Nenhuma chamada externa (Supabase, Google, Microsoft, Instagram, Bling, sistema de gestão) pode ficar
 // pendurada para sempre: sem prazo, uma resposta que nunca vem prende a tarefa automática que a fez
@@ -51,6 +52,11 @@ setTimeout(() => {
 setInterval(() => {
   baixarMidiasPendentes(20).catch((e) => console.error("anexos pendentes", e));
 }, 60_000);
+
+// Vigia dos números: a cada 5 minutos confere se algum número "conectado" travou por dentro.
+setInterval(() => {
+  vigiarNumeros().catch((e) => console.error("vigia dos números", e));
+}, 5 * 60_000);
 
 // Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
 // para enxergar cedo se algo voltar a acumular.

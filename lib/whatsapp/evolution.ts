@@ -97,6 +97,17 @@ export class EvolutionProvider implements WhatsAppProvider {
     return data || null;
   }
 
+  /**
+   * Testa a sessão de verdade: pergunta ao WhatsApp se o próprio número existe.
+   * Sessão travada (aparece "open", mas a ligação caiu) responde "Connection Closed".
+   * Devolve false só quando tem certeza de que travou.
+   */
+  async testarSessao(fone: string): Promise<boolean> {
+    const r = await this.call("POST", `/chat/whatsappNumbers/${this.instance}`, { numbers: [fone] }, 20_000).catch(() => null);
+    if (!r) return true; // Evolution lenta ou fora: não é sinal de número travado
+    return !(r.status >= 400 && /Connection Closed/i.test(JSON.stringify(r.data)));
+  }
+
   /** Desconecta o celular, mas mantém a instância para conectar de novo depois. */
   async logout() {
     const { status, data } = await this.call("DELETE", `/instance/logout/${this.instance}`);
