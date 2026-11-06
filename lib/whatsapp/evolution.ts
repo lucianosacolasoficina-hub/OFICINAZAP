@@ -369,36 +369,43 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   /** Áudio gravado na hora: a Evolution converte e ele chega como mensagem de voz. */
   async sendAudio(phone: string, file: MediaFile, citar?: Citacao) {
-    const res = await fetch(`${this.baseUrl}/message/sendWhatsAppAudio/${this.instance}`, {
-      method: "POST",
-      signal: AbortSignal.timeout(90_000),
-      headers: { "Content-Type": "application/json", apikey: this.apiKey },
-      body: JSON.stringify({ number: phone, audio: file.data.toString("base64"), encoding: true, ...citado(citar) }),
-    });
-    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { key?: { id?: string } };
+    const data = await this.enviar(`/message/sendWhatsAppAudio/${this.instance}`, { number: phone, audio: file.data.toString("base64"), encoding: true, ...citado(citar) }, 90_000);
     return { waMessageId: data.key?.id };
   }
 
+  /**
+   * Envia pela Evolution. Se a sessão do número caiu por dentro (a Evolution responde "Connection Closed"
+   * mas o número aparece como conectado, o que acontece depois de o banco ou o servidor reiniciar),
+   * reinicia a sessão sozinho e tenta mais uma vez, sem precisar ler o QR Code.
+   */
+  private async enviar(path: string, body: unknown, timeoutMs: number): Promise<{ key?: { id?: string } }> {
+    for (let tentativa = 0; ; tentativa++) {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { "Content-Type": "application/json", apikey: this.apiKey },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return (await res.json()) as { key?: { id?: string } };
+      const texto = await res.text();
+      if (tentativa === 0 && /Connection Closed/i.test(texto)) {
+        console.warn("Sessão caída ao enviar, reiniciando", this.instance);
+        await this.restart().catch(() => {});
+        await esperarAberta(this, 25_000);
+        continue;
+      }
+      throw new Error(`Evolution API ${res.status}: ${texto}`);
+    }
+  }
+
   async sendText(phone: string, text: string, citar?: Citacao) {
-    const res = await fetch(`${this.baseUrl}/message/sendText/${this.instance}`, {
-      method: "POST",
-      signal: AbortSignal.timeout(30_000),
-      headers: { "Content-Type": "application/json", apikey: this.apiKey },
-      body: JSON.stringify({ number: phone, text, ...citado(citar) }),
-    });
-    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { key?: { id?: string } };
+    const data = await this.enviar(`/message/sendText/${this.instance}`, { number: phone, text, ...citado(citar) }, 30_000);
     return { waMessageId: data.key?.id };
   }
 
   async sendImage(phone: string, file: MediaFile, caption?: string, citar?: Citacao) {
     const ext = file.mimeType.split("/")[1] || "png";
-    const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
-      method: "POST",
-      signal: AbortSignal.timeout(90_000),
-      headers: { "Content-Type": "application/json", apikey: this.apiKey },
-      body: JSON.stringify({
+    const data = await this.enviar(`/message/sendMedia/${this.instance}`, {
         number: phone,
         mediatype: "image",
         mimetype: file.mimeType,
@@ -406,19 +413,12 @@ export class EvolutionProvider implements WhatsAppProvider {
         media: file.data.toString("base64"),
         fileName: `imagem.${ext}`,
         ...citado(citar),
-      }),
-    });
-    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { key?: { id?: string } };
+      }, 90_000);
     return { waMessageId: data.key?.id };
   }
 
   async sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string, citar?: Citacao) {
-    const res = await fetch(`${this.baseUrl}/message/sendMedia/${this.instance}`, {
-      method: "POST",
-      signal: AbortSignal.timeout(90_000),
-      headers: { "Content-Type": "application/json", apikey: this.apiKey },
-      body: JSON.stringify({
+    const data = await this.enviar(`/message/sendMedia/${this.instance}`, {
         number: phone,
         mediatype: "document",
         mimetype: file.mimeType,
@@ -426,10 +426,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         media: file.data.toString("base64"),
         fileName,
         ...citado(citar),
-      }),
-    });
-    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { key?: { id?: string } };
+      }, 90_000);
     return { waMessageId: data.key?.id };
   }
 
@@ -488,3 +485,16 @@ async function lerAte(res: Response, max: number): Promise<string | null> {
   return Buffer.concat(partes).toString("utf8");
 }
 
+
+/** Espera a sessão voltar a "open" depois de reiniciar (no máximo `ms`). */
+async function esperarAberta(p: EvolutionProvider, ms: number) {
+  const fim = Date.now() + ms;
+  await new Promise((r) => setTimeout(r, 4000));
+  while (Date.now() < fim) {
+    if ((await p.connectionState().catch(() => "")) === "open") {
+      await new Promise((r) => setTimeout(r, 2000));
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
