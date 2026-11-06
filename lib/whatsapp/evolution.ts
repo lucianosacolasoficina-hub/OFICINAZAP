@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "../supabase/admin";
 import type { Citacao, IncomingMessage, MediaFile, WhatsAppProvider } from "./types";
 
 // Conexão não oficial via Evolution API (QR Code). Use num número secundário:
@@ -85,17 +86,15 @@ export class EvolutionProvider implements WhatsAppProvider {
     return data.instance?.state ?? "close";
   }
 
-  /** Número do celular conectado (somente dígitos), quando a instância está conectada. */
+  /**
+   * Número do celular conectado (somente dígitos), quando a instância está conectada.
+   * Lido direto do banco da Evolution: o /instance/fetchInstances conta todas as mensagens guardadas
+   * e chegava a levar mais de um minuto, segurando conexões do banco que a Evolution precisa para salvar mensagens.
+   */
   async ownerPhone(): Promise<string | null> {
-    const { status, data } = await this.call<{ ownerJid?: string | null; number?: string | null }[]>(
-      "GET",
-      `/instance/fetchInstances?instanceName=${encodeURIComponent(this.instance)}`,
-      undefined,
-      10000,
-    );
-    if (status >= 400 || !Array.isArray(data) || !data[0]) return null;
-    const jid = data[0].ownerJid ?? data[0].number ?? "";
-    return jid.split("@")[0].split(":")[0] || null;
+    const { data, error } = await supabaseAdmin().rpc("zap_dono_instancia", { p_instance: this.instance });
+    if (error || typeof data !== "string") return null;
+    return data || null;
   }
 
   /** Desconecta o celular, mas mantém a instância para conectar de novo depois. */
@@ -140,6 +139,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       if (set.status >= 400) throw new Error(`Evolution API ${set.status}: ${JSON.stringify(set.data)}`);
     }
     if (state === "open") return { state };
+    await this.desligarHistoricoCompleto().catch(() => false);
     // Com o número, a Evolution devolve também um código de 8 letras para conectar sem câmera.
     const q = phone ? `?number=${encodeURIComponent(phone)}` : "";
     const { status, data } = await this.call<{ base64?: string; pairingCode?: string | null }>("GET", `/instance/connect/${this.instance}${q}`);
@@ -223,8 +223,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     ];
   }
 
-  /** Liga a sincronização do histórico completo (vale na próxima vez que o celular conectar). */
-  async ligarHistoricoCompleto() {
+  /**
+   * Desliga a sincronização do histórico completo (vale na próxima vez que o celular conectar).
+   * Com ela ligada, cada reconexão despejava o histórico inteiro do celular (dezenas de milhares de
+   * mensagens) no banco de uma vez: a Evolution ficava sem conexões livres e as mensagens novas não
+   * eram salvas. O histórico antigo vem pelo "Puxar conversas antigas", que lê o banco aos poucos.
+   */
+  async desligarHistoricoCompleto() {
     const atual = await this.call<Record<string, unknown>>("GET", `/settings/find/${this.instance}`);
     const base = atual.status < 400 && atual.data && typeof atual.data === "object" ? atual.data : {};
     const body = {
@@ -235,7 +240,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       readMessages: false,
       readStatus: false,
       ...Object.fromEntries(Object.entries(base).filter(([k]) => ["rejectCall", "msgCall", "groupsIgnore", "alwaysOnline", "readMessages", "readStatus"].includes(k))),
-      syncFullHistory: true,
+      syncFullHistory: false,
     };
     const r = await this.call("POST", `/settings/set/${this.instance}`, body);
     return r.status < 400;

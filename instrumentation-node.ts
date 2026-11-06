@@ -46,10 +46,11 @@ setTimeout(() => {
   retomarHistoricos().catch((e) => console.error("retomar histórico", e));
 }, 90_000);
 
-// Anexos que entraram sem o arquivo (histórico importado, enviados pelo celular): 20 a cada 20 segundos.
+// Anexos que entraram sem o arquivo (histórico importado, enviados pelo celular): 20 por minuto,
+// para não disputar o banco com a Evolution.
 setInterval(() => {
   baixarMidiasPendentes(20).catch((e) => console.error("anexos pendentes", e));
-}, 20_000);
+}, 60_000);
 
 // Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
 // para enxergar cedo se algo voltar a acumular.

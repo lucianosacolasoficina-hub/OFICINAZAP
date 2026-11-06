@@ -3,7 +3,6 @@ import { HttpError, route, type IdCtx } from "@/lib/api";
 import { getConnection, requireEvolution } from "@/lib/connections";
 import { getSetting, setSetting } from "@/lib/db";
 import { puxarHistorico } from "@/lib/historico";
-import { EvolutionProvider } from "@/lib/whatsapp/evolution";
 
 export const maxDuration = 300;
 
@@ -20,7 +19,7 @@ export const GET = route<IdCtx>(async (_req, { params }) => {
   return (await getSetting(`historico_${conn.id}`, null)) ?? { status: "nunca" };
 });
 
-// Puxa as conversas antigas guardadas e liga o histórico completo para a próxima conexão.
+// Puxa as conversas antigas guardadas (lendo o banco aos poucos).
 export const POST = route<IdCtx>(async (req, { params }) => {
   const conn = await load(params);
   const { dias = 30, parar } = (await req.json().catch(() => ({}))) as { dias?: number; parar?: boolean };
@@ -29,8 +28,6 @@ export const POST = route<IdCtx>(async (req, { params }) => {
     await setSetting(`historico_${conn.id}`, { ...atual, status: "parar" });
     return { parando: true };
   }
-  const ev = new EvolutionProvider(conn.instance);
-  const historicoCompleto = await ev.ligarHistoricoCompleto().catch(() => false);
   after(() => puxarHistorico(conn, Math.min(Math.max(Number(dias) || 30, 1), 3650)));
-  return { iniciado: true, historicoCompleto };
+  return { iniciado: true, historicoCompleto: false };
 });
