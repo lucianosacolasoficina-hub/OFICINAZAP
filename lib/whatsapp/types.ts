@@ -10,6 +10,8 @@ export type IncomingMessage = {
   instance?: string;
   /** Mensagem de grupo: "phone" é o id do grupo e "name" é quem escreveu. */
   isGroup?: boolean;
+  /** Reação (emoji) do cliente a uma mensagem: `alvo` é o id no WhatsApp da mensagem reagida; emoji vazio = tirou a reação. */
+  reacao?: { alvo: string; emoji: string };
 };
 
 export type MediaFile = { data: Buffer; mimeType: string };
@@ -37,6 +39,12 @@ export interface WhatsAppProvider {
   sendImage(phone: string, file: MediaFile, caption?: string, citar?: Citacao): Promise<{ waMessageId?: string }>;
   /** Envia um arquivo (PDF, Excel…) com o nome que o cliente verá e legenda opcional. */
   sendDocument(phone: string, file: MediaFile, fileName: string, caption?: string, citar?: Citacao): Promise<{ waMessageId?: string }>;
+  /** Envia um áudio gravado na hora (sai como mensagem de voz). */
+  sendAudio?(phone: string, file: MediaFile, citar?: Citacao): Promise<{ waMessageId?: string }>;
+  /** Reage (emoji) a uma mensagem; emoji vazio tira a reação. */
+  sendReaction?(msg: Omit<Citacao, "text">, emoji: string): Promise<void>;
+  /** Edita o texto de uma mensagem que nós enviamos (o WhatsApp deixa por 15 minutos). */
+  editText?(phone: string, msg: Omit<Citacao, "text">, text: string): Promise<void>;
   /** Apaga para todos uma mensagem que nós enviamos (como o "Apagar para todos" do WhatsApp). */
   deleteForEveryone?(msg: Omit<Citacao, "text">): Promise<void>;
   /** Baixa o arquivo de uma mensagem com mídia. */

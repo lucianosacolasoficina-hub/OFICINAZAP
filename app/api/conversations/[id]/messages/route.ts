@@ -1,6 +1,7 @@
 import { HttpError, route, type IdCtx } from "@/lib/api";
 import { addMessage, MSG_APAGADA, setMessageMedia, threadIds, updateConversation, type Conversation, type Message } from "@/lib/db";
-import { saveMedia } from "@/lib/media";
+import { loadMedia, saveMedia } from "@/lib/media";
+import { getAgent, podeAbrirConversa } from "@/lib/perms";
 import { apagarRascunho, arquivoDoRascunho, lerRascunho, type Rascunho } from "@/lib/rascunhos";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { whatsapp, type Citacao, type MediaFile } from "@/lib/whatsapp";
@@ -12,15 +13,26 @@ import { enviarMessenger, FB_PREFIX } from "@/lib/messenger";
 // Atendente envia uma mensagem. Ao responder, ele assume a conversa e a IA para de responder nela.
 export const POST = route<IdCtx>(async (req, { params }, userId) => {
   const { id } = await params;
-  const { body, image, document, rascunho, replyTo } = (await req.json()) as {
+  const { body, image, document, audio, rascunho, replyTo, encaminhar } = (await req.json()) as {
     body?: string;
+    /** Áudio gravado na hora (botão do microfone). */
+    audio?: { data?: string; mimeType?: string };
+    /** Id (no OficinaZap) de uma mensagem para encaminhar a esta conversa (texto e arquivo iguais). */
+    encaminhar?: string;
     image?: { data?: string; mimeType?: string };
     document?: { data?: string; mimeType?: string; name?: string };
     rascunho?: string;
     /** Id (no OficinaZap) da mensagem que está sendo respondida. */
     replyTo?: string;
   };
-  const text = body?.trim() ?? "";
+  let text = body?.trim() ?? "";
+  let voz: MediaFile | null = null;
+  if (audio) {
+    const mime = (audio.mimeType ?? "").split(";")[0];
+    if (!audio.data || !/^audio\/(webm|ogg|mp4|mpeg)$/.test(mime)) throw new HttpError(400, "formato de áudio não suportado");
+    voz = { data: Buffer.from(audio.data, "base64"), mimeType: mime };
+    if (voz.data.length > 15 * 1024 * 1024) throw new HttpError(400, "áudio muito grande (máximo 15 MB)");
+  }
   // Foto colada (Ctrl+V de um recorte de tela) ou escolhida no 📎; o texto vira a legenda.
   let foto: MediaFile | null =
     image?.data && /^image\/(png|jpeg|webp|gif)$/.test(image.mimeType ?? "")
@@ -44,8 +56,36 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
       else doc = { data: f.data, mimeType: f.mimeType, nome: f.nome };
     }
   }
+  // Encaminhar: a mesma mensagem (texto, foto, arquivo ou áudio) vai para esta conversa.
+  // Passa pela mesma trava de sempre: a mesma mensagem para muitos contatos em pouco tempo é barrada.
+  if (encaminhar) {
+    const { data: o } = await supabaseAdmin().from("messages").select("*").eq("id", encaminhar).maybeSingle();
+    const orig = o as Message | null;
+    if (!orig || orig.sender === "system" || (orig.body === MSG_APAGADA && !orig.media_type)) throw new HttpError(404, "mensagem para encaminhar não encontrada");
+    const ag = await getAgent(userId);
+    if (ag?.canais && !(await podeAbrirConversa(ag, orig.conversation_id))) throw new HttpError(403, "esta mensagem é de um número que não foi liberado para você");
+    const semMarca = /^\[(image|audio|video|document|sticker)\]$/.test(orig.body.trim()) ? "" : orig.body;
+    if (orig.media_type) {
+      if (!orig.media_url) throw new HttpError(400, "o arquivo desta mensagem ainda não foi baixado. Abra a mensagem e tente de novo em instantes.");
+      const f = await loadMedia(orig.media_url);
+      if (!f) throw new HttpError(404, "o arquivo desta mensagem não foi encontrado");
+      const mime = f.mimeType.split(";")[0];
+      if (orig.media_type === "image" && /^image\/(png|jpeg|webp|gif)$/.test(mime)) foto = { data: f.data, mimeType: mime };
+      else if (orig.media_type === "audio") voz = { data: f.data, mimeType: mime };
+      else if (orig.media_type === "document" && DOC_MIMES.has(mime)) {
+        const nome = orig.media_url.split("/").pop() ?? "arquivo";
+        const doBody = semMarca.match(/([^\s/\\]+\.(pdf|xlsx|xls|docx|csv))\b/i)?.[1];
+        doc = { data: f.data, mimeType: mime, nome: nomeArquivo(doBody ?? nome, mime) };
+      } else throw new HttpError(400, "este tipo de arquivo (vídeo ou figurinha) ainda não dá para encaminhar por aqui");
+      text = orig.media_type === "document" && /^📄\s/.test(semMarca) ? "" : semMarca.trim();
+    } else text = semMarca.trim();
+  }
+  if (voz) {
+    foto = null;
+    doc = null;
+  }
   if (foto && doc) doc = null;
-  if (!text && !foto && !doc) throw new HttpError(400, "mensagem vazia");
+  if (!text && !foto && !doc && !voz) throw new HttpError(400, "mensagem vazia");
 
   const { data, error } = await supabaseAdmin()
     .from("conversations")
@@ -59,7 +99,7 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
   // Responde pelo mesmo número de WhatsApp em que o cliente escreveu.
   const { phone, is_group } = conversation.contact;
   const canal = conversation.connection?.channel;
-  if ((foto || doc) && (canal === "instagram" || canal === "messenger" || canal === "email")) {
+  if ((foto || doc || voz) && (canal === "instagram" || canal === "messenger" || canal === "email")) {
     throw new HttpError(400, "por enquanto o envio de imagem e arquivo funciona só nas conversas de WhatsApp");
   }
   const destino = is_group ? `${phone}@g.us` : phone;
@@ -73,7 +113,11 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
     citada?.wa_message_id && citada.body !== MSG_APAGADA && !(canal === "instagram" || canal === "messenger" || canal === "email")
       ? { id: citada.wa_message_id, remoteJid: is_group ? `${phone}@g.us` : `${phone}@s.whatsapp.net`, fromMe: citada.direction === "out", text: citada.body || "" }
       : undefined;
-  const sent = foto
+  const zap = whatsapp(conversation.connection?.instance);
+  if (voz && !zap.sendAudio) throw new HttpError(400, "esta conexão não envia áudio");
+  const sent = voz
+    ? await zap.sendAudio!(destino, voz, citar)
+    : foto
     ? await whatsapp(conversation.connection?.instance).sendImage(destino, foto, text || undefined, citar)
     : doc
     ? await whatsapp(conversation.connection?.instance).sendDocument(destino, doc, doc.nome, text || undefined, citar)
@@ -91,14 +135,15 @@ export const POST = route<IdCtx>(async (req, { params }, userId) => {
     direction: "out",
     sender: "agent",
     agent_id: userId,
-    body: doc && !text ? `📄 ${doc.nome}` : text,
+    body: voz ? "" : doc && !text ? `📄 ${doc.nome}` : text,
     ...(foto && { media_type: "image" }),
+    ...(voz && { media_type: "audio" }),
     ...(doc && { media_type: "document" }),
     wa_message_id: sent.waMessageId ?? null,
     ...(citada && { reply_to: citada.id }),
   });
   // Guarda o arquivo enviado para ele aparecer na conversa (se falhar, o arquivo já foi para o cliente).
-  const guardar = foto ?? doc;
+  const guardar = voz ?? foto ?? doc;
   if (msg && guardar) {
     const path = await saveMedia(id, msg.id, guardar).catch(() => null);
     if (path) {

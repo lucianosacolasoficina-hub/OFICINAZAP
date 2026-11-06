@@ -4,6 +4,7 @@ import { ensureDeal } from "./deals";
 import {
   activeConversation,
   addMessage,
+  aplicarReacao,
   getQuote,
   getSetting,
   listDepartments,
@@ -28,6 +29,11 @@ const DEBOUNCE_MS = Number(process.env.AI_DEBOUNCE_MS ?? 4000);
 
 /** `robo: false` = só guarda a mensagem (usado na conferência para mensagens que já não são recentes). */
 export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolean } = {}) {
+  // Reação do cliente (emoji numa mensagem): só marca a mensagem reagida, não vira balão nem acorda a IA.
+  if (msg.reacao) {
+    await aplicarReacao(msg.reacao.alvo, "cliente", msg.reacao.emoji);
+    return;
+  }
   const botEnabled = await getSetting<boolean>("bot_enabled", true);
   // Com vários números, a conversa fica ligada ao número que recebeu a mensagem e a resposta sai por ele.
   const connection = msg.instance ? await connectionByInstance(msg.instance) : null;

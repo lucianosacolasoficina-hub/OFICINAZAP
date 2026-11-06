@@ -44,6 +44,12 @@ export type Message = {
   transcricao?: string | null;
   /** Mensagem citada nesta resposta (coluna da migração 013; pode não existir ainda no banco). */
   reply_to?: string | null;
+  /** Reação (emoji) de cada lado: { nos: "👍", cliente: "❤️" } (migração 014). */
+  reacoes?: { nos?: string; cliente?: string } | null;
+  /** Marcada com estrela pelo atendente (migração 014). */
+  favorita?: boolean;
+  /** Texto editado depois de enviado (migração 014). */
+  editada?: boolean;
   created_at: string;
 };
 
@@ -144,6 +150,19 @@ export async function addMessage(
       .eq("id", conversationId),
   );
   return saved;
+}
+
+/** Guarda a reação (emoji) de um lado numa mensagem, achada pelo id do WhatsApp. Emoji vazio tira a reação. */
+export async function aplicarReacao(waMessageId: string, lado: "nos" | "cliente", emoji: string) {
+  const db = supabaseAdmin();
+  const { data } = await db.from("messages").select("id, reacoes").eq("wa_message_id", waMessageId).limit(1).maybeSingle();
+  if (!data) return null;
+  const atual = { ...((data as { reacoes?: Record<string, string> | null }).reacoes ?? {}) };
+  if (emoji) atual[lado] = emoji;
+  else delete atual[lado];
+  const { error } = await db.from("messages").update({ reacoes: atual }).eq("id", (data as { id: string }).id);
+  if (error) throw new Error(error.message);
+  return atual;
 }
 
 export async function setMessageMedia(messageId: string, mediaUrl: string) {

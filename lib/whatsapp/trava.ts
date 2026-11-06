@@ -209,5 +209,17 @@ export function comTrava(p: WhatsAppProvider, instance: string): WhatsAppProvide
       enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(caption ?? "")]), () => p.sendImage(phone, file, caption, citar)),
     sendDocument: (phone: string, file: MediaFile, fileName: string, caption?: string, citar?: Citacao) =>
       enviarComTrava(instance, phone, Buffer.concat([file.data, Buffer.from(fileName + (caption ?? ""))]), () => p.sendDocument(phone, file, fileName, caption, citar)),
+    ...(p.sendAudio && {
+      sendAudio: (phone: string, file: MediaFile, citar?: Citacao) => enviarComTrava(instance, phone, file.data, () => p.sendAudio!(phone, file, citar)),
+    }),
+    // Reação e edição também esperam a vez na fila do número (nada sai em rajada).
+    ...(p.sendReaction && {
+      sendReaction: (msg: Omit<Citacao, "text">, emoji: string) =>
+        enviarComTrava(instance, msg.remoteJid, `reacao|${msg.id}|${emoji}|${Date.now()}`, () => p.sendReaction!(msg, emoji)),
+    }),
+    ...(p.editText && {
+      editText: (phone: string, msg: Omit<Citacao, "text">, text: string) =>
+        enviarComTrava(instance, phone, `editar|${msg.id}|${text}`, () => p.editText!(phone, msg, text)),
+    }),
   }) as WhatsAppProvider;
 }

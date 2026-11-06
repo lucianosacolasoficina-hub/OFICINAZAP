@@ -8,6 +8,21 @@ import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
 import { EtapasCrm, type Etapa } from "@/components/EtapasCrm";
 import {
+  atalhoFormato,
+  CatalogoPop,
+  ChipsEtiquetas,
+  EmojiPicker,
+  EncaminharModal,
+  envolver,
+  EtiquetasPop,
+  fotoCatalogo,
+  mmss,
+  textoProduto,
+  TextoZap,
+  useGravador,
+  type ItemCatalogo,
+} from "@/components/CaixaZap";
+import {
   api,
   avatarColor,
   formatListTime,
@@ -887,6 +902,7 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
           {formatPreview(c.last_message_preview) || " "}
         </div>
         <div className="ib-line ib-tags">
+          <ChipsEtiquetas tags={c.contact.tags ?? []} max={2} />
           {mostrarNumero && c.connection ? (
             <span className="ib-num" title={`Chegou pelo número ${c.connection.name}`}>📱 {c.connection.name}</span>
           ) : null}
@@ -1127,10 +1143,130 @@ function Chat({
   const [menuMsg, setMenuMsg] = useState<string | null>(null);
   const [apagando, setApagando] = useState<string | null>(null);
   const caixa = useRef<HTMLTextAreaElement>(null);
+  // Funções do WhatsApp Business: emojis, reações, encaminhar, editar, etiquetas, catálogo e áudio.
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [fmtOpen, setFmtOpen] = useState(false);
+  const [reagirMsg, setReagirMsg] = useState<string | null>(null);
+  const [encaminhando, setEncaminhando] = useState<Message | null>(null);
+  const [editando, setEditando] = useState<Message | null>(null);
+  const [etqOpen, setEtqOpen] = useState(false);
+  const [catOpen, setCatOpen] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const grav = useGravador();
   useEffect(() => {
     setRespondendo(null);
     setMenuMsg(null);
+    setEditando(null);
+    setReagirMsg(null);
+    setEtqOpen(false);
+    setCatOpen(false);
+    setEmojiOpen(false);
+    if (grav.gravando) grav.parar(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.id]);
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(""), 2500);
+    return () => clearTimeout(t);
+  }, [aviso]);
+  function porEmoji(e: string) {
+    const el = caixa.current;
+    if (!el) return setText((t) => t + e);
+    const a = el.selectionStart ?? text.length;
+    const b = el.selectionEnd ?? text.length;
+    setText(text.slice(0, a) + e + text.slice(b));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(a + e.length, a + e.length);
+    });
+  }
+  async function patchMsg(m: Message, corpo: Record<string, unknown>) {
+    setError("");
+    try {
+      await api(`/api/conversations/${c.id}/messages/${m.id}`, { method: "PATCH", body: JSON.stringify(corpo) });
+      await onSent();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não deu certo");
+      return false;
+    }
+  }
+  function reagir(m: Message, emoji: string) {
+    setMenuMsg(null);
+    setReagirMsg(null);
+    // Clicar de novo na mesma reação tira a reação.
+    patchMsg(m, { reacao: m.reacoes?.nos === emoji ? "" : emoji });
+  }
+  function favoritar(m: Message) {
+    setMenuMsg(null);
+    patchMsg(m, { favorita: !m.favorita }).then((ok) => ok && setAviso(m.favorita ? "Tirada das favoritas" : "⭐ Mensagem favoritada"));
+  }
+  async function copiar(m: Message) {
+    setMenuMsg(null);
+    try {
+      await navigator.clipboard.writeText(m.transcricao && !m.body ? m.transcricao : m.body);
+      setAviso("📋 Texto copiado");
+    } catch {
+      setError("O navegador não deixou copiar.");
+    }
+  }
+  function editar(m: Message) {
+    setMenuMsg(null);
+    setRespondendo(null);
+    setEditando(m);
+    setText(m.body);
+    setTimeout(() => caixa.current?.focus(), 0);
+  }
+  const podeEditar = (m: Message) => m.direction === "out" && !!m.wa_message_id && !m.media_type && m.body !== MSG_APAGADA && Date.now() - new Date(m.created_at).getTime() < 15 * 60_000;
+  async function gravarOuEnviarAudio() {
+    setError("");
+    if (!grav.gravando) {
+      try {
+        await grav.iniciar();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Não consegui usar o microfone");
+      }
+      return;
+    }
+    const blob = await grav.parar();
+    if (!blob || blob.size < 1200) return setError("Áudio muito curto: segure um pouco mais antes de enviar.");
+    setSending(true);
+    try {
+      const data = await new Promise<string>((ok, fail) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(",")[1] ?? "");
+        r.onerror = () => fail(new Error("Não consegui ler o áudio"));
+        r.readAsDataURL(blob);
+      });
+      await api(`/api/conversations/${c.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body: "", audio: { data, mimeType: blob.type || "audio/webm" }, ...(respondendo && { replyTo: respondendo.id }) }),
+      });
+      setRespondendo(null);
+      await onSent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao enviar o áudio");
+    } finally {
+      setSending(false);
+    }
+  }
+  async function usarProduto(i: ItemCatalogo) {
+    setCatOpen(false);
+    setText(textoProduto(i));
+    if (i.foto) {
+      try {
+        const r = await fetch(fotoCatalogo(i));
+        if (!r.ok) throw new Error();
+        const b = await r.blob();
+        const tipo = b.type || "image/jpeg";
+        escolherFoto(new File([b], `${i.nome.replace(/[^\w-]+/g, "-").slice(0, 40) || "produto"}.${tipo.split("/")[1] || "jpg"}`, { type: tipo }));
+      } catch {
+        setError("Não consegui carregar a foto do produto; o texto ficou na caixa.");
+      }
+    }
+    setTimeout(() => caixa.current?.focus(), 0);
+  }
   useEffect(() => {
     if (!menuMsg) return;
     const fechar = () => setMenuMsg(null);
@@ -1172,15 +1308,16 @@ function Chat({
   const [acoes, setAcoes] = useState(false);
   // Painel de arquivos da conversa, busca dentro da conversa e foto ampliada na própria tela.
   const [arq, setArq] = useState(false);
-  const [arqTab, setArqTab] = useState<"fotos" | "docs" | "audios" | "links">("fotos");
+  const [arqTab, setArqTab] = useState<"fotos" | "docs" | "audios" | "links" | "favoritas">("fotos");
   const [busca, setBusca] = useState<string | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
   const [zoomPdf, setZoomPdf] = useState<string | null>(null);
   // Arquivos que o WhatsApp não devolveu mais: ficam só com o ícone.
   const [falhou, setFalhou] = useState<Set<string>>(() => new Set());
   const arquivos = useMemo(() => {
-    const out = { fotos: [] as Message[], docs: [] as Message[], audios: [] as Message[], links: [] as { url: string; m: Message }[] };
+    const out = { fotos: [] as Message[], docs: [] as Message[], audios: [] as Message[], links: [] as { url: string; m: Message }[], favoritas: [] as Message[] };
     for (const m of messages) {
+      if (m.favorita) out.favoritas.push(m);
       if (m.media_url && (m.media_type === "image" || m.media_type === "video" || m.media_type === "sticker")) out.fotos.push(m);
       else if (m.media_url && m.media_type === "audio") out.audios.push(m);
       else if (m.media_url && m.media_type) out.docs.push(m);
@@ -1232,6 +1369,17 @@ function Chat({
 
   async function send() {
     const body = text.trim();
+    if (editando) {
+      if (!body || sending) return;
+      setSending(true);
+      const ok = body === editando.body.trim() || (await patchMsg(editando, { texto: body }));
+      setSending(false);
+      if (ok) {
+        setEditando(null);
+        setText("");
+      }
+      return;
+    }
     if ((!body && !foto && !rascunho) || sending) return;
     setSending(true);
     setError("");
@@ -1269,6 +1417,14 @@ function Chat({
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (atalhoFormato(e, setText)) return;
+    if (e.key === "Escape" && editando) {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditando(null);
+      setText("");
+      return;
+    }
     if (e.key === "Escape" && respondendo) {
       e.preventDefault();
       e.stopPropagation();
@@ -1290,8 +1446,32 @@ function Chat({
     }
   }
 
+  const podeArrastar = c.status !== "closed" && !editando;
+  const zapCanal = !/^(ig|fb|mail):/.test(String(c.contact.phone));
   return (
-    <section className="chat">
+    <section
+      className={`chat${arrastando ? " zx-arrastando" : ""}`}
+      onDragOver={(e) => {
+        if (!podeArrastar || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        if (!arrastando) setArrastando(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setArrastando(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setArrastando(false);
+        if (podeArrastar) escolherFoto(e.dataTransfer.files?.[0]);
+      }}
+    >
+      {arrastando && <div className="zx-solte">📎 Solte aqui para enviar a foto ou o arquivo</div>}
+      {aviso && <div className="zx-aviso" role="status">{aviso}</div>}
+      {encaminhando && (
+        <EncaminharModal msg={encaminhando} resumo={resumoMsg(encaminhando)} atual={c.id} onClose={() => setEncaminhando(null)} onDone={() => onSent()} />
+      )}
       <header className="chat-head ch2">
         <div className="ch2-row">
           {onBack && (
@@ -1306,8 +1486,15 @@ function Chat({
               {" · "}<span className={`badge ${c.status}`}>{STATUS_LABEL[c.status]}</span>
               {c.agent && <> · com {c.agent.name}</>}
               {c.department && <> · <span className="dept" style={{ background: c.department.color }}>{c.department.name}</span></>}
+              {(c.contact.tags ?? []).length > 0 && <> · <ChipsEtiquetas tags={c.contact.tags} max={4} /></>}
             </div>
           </div>
+          {!c.contact.is_group && (
+            <span className="pd-wrap">
+              <button className={`ch2-ic${etqOpen ? " on" : ""}`} onClick={() => setEtqOpen((v) => !v)} title="Etiquetas do cliente (novo pedido, pago, pagamento pendente…)" aria-label="Etiquetas">🏷</button>
+              {etqOpen && <EtiquetasPop contact={c.contact} onSaved={() => { onSent(); }} onClose={() => setEtqOpen(false)} />}
+            </span>
+          )}
           {c.status !== "open" && c.status !== "closed" && (
             <button className="primary" onClick={() => onStatus("open")}>Assumir</button>
           )}
@@ -1500,13 +1687,13 @@ function Chat({
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {sep}
-              <div id={`m-${m.id}`} className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}${apagada ? " apagada" : ""}${menuMsg === m.id ? " menu-on" : ""}`}>
+              <div id={`m-${m.id}`} className={`bubble ${m.direction === "in" ? "in" : m.sender} ${together ? "cont" : "first"}${qBusca.length >= 2 && m.body?.toLowerCase().includes(qBusca) ? " achou" : ""}${apagada ? " apagada" : ""}${menuMsg === m.id || reagirMsg === m.id ? " menu-on" : ""}${!apagada && (m.reacoes?.nos || m.reacoes?.cliente) ? " tem-reacao" : ""}`}>
                 {!apagada && (
                   <span className="msg-acoes">
                     <button
                       type="button"
                       className="msg-seta"
-                      title="Responder ou apagar"
+                      title="Reagir, responder, encaminhar, favoritar…"
                       aria-label="Opções da mensagem"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1515,9 +1702,24 @@ function Chat({
                     >
                       {apagando === m.id ? "…" : "⌄"}
                     </button>
+                    {reagirMsg === m.id && (
+                      <EmojiPicker className="zx-emoji-reacao" onPick={(e) => reagir(m, e)} onClose={() => setReagirMsg(null)} />
+                    )}
                     {menuMsg === m.id && (
                       <span className="msg-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+                        {!!m.wa_message_id && !c.contact.is_group && !/^(ig|fb|mail):/.test(String(c.contact.phone)) && (
+                          <span className="zx-reagir" aria-label="Reagir">
+                            {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((e) => (
+                              <button key={e} type="button" className={m.reacoes?.nos === e ? "on" : ""} title={m.reacoes?.nos === e ? "Tirar a reação" : "Reagir"} onClick={() => reagir(m, e)}>{e}</button>
+                            ))}
+                            <button type="button" title="Outro emoji" onClick={() => { setMenuMsg(null); setReagirMsg(m.id); }}>＋</button>
+                          </span>
+                        )}
                         {c.status !== "closed" && <button type="button" role="menuitem" onClick={() => responder(m)}>↩ Responder</button>}
+                        {(m.body && m.body !== MSG_APAGADA || m.transcricao) && <button type="button" role="menuitem" onClick={() => copiar(m)}>📋 Copiar texto</button>}
+                        <button type="button" role="menuitem" onClick={() => { setMenuMsg(null); setEncaminhando(m); }}>↪ Encaminhar</button>
+                        <button type="button" role="menuitem" onClick={() => favoritar(m)}>{m.favorita ? "☆ Tirar dos favoritos" : "⭐ Favoritar"}</button>
+                        {podeEditar(m) && c.status !== "closed" && <button type="button" role="menuitem" onClick={() => editar(m)}>✏️ Editar</button>}
                         <button type="button" role="menuitem" className="perigo" onClick={() => apagar(m)}>
                           🗑 {m.direction === "out" && m.wa_message_id ? "Apagar para todos" : "Apagar só aqui"}
                         </button>
@@ -1565,18 +1767,28 @@ function Chat({
                   return g ? (
                     <>
                       <b className="g-nome" style={{ color: avatarColor(g[1]) }}>{g[1]}</b>
-                      <Linkified text={g[2]} />
+                      <TextoZap text={g[2]} />
                     </>
                   ) : (
-                    <Linkified text={body} />
+                    <TextoZap text={body} />
                   );
                 })()}
                 {/* Espaço reservado no fim do texto para o horário (que fica no canto de baixo). */}
-                <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}`} />
+                <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}${m.favorita || m.editada ? " mais" : ""}`} />
                 <span className="meta">
+                  {m.favorita && <span title="Favoritada">⭐ </span>}
+                  {m.editada && <span title="Mensagem editada depois de enviada">editada · </span>}
                   {m.sender === "bot" ? "🤖 IA · " : ""}
                   {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
+                {!apagada && (m.reacoes?.nos || m.reacoes?.cliente) && (
+                  <span className="zx-reacoes" title={[m.reacoes?.cliente && `${c.contact.name || "Cliente"}: ${m.reacoes.cliente}`, m.reacoes?.nos && `Você: ${m.reacoes.nos}`].filter(Boolean).join(" · ")}>
+                    {m.reacoes?.cliente && <span>{m.reacoes.cliente}</span>}
+                    {m.reacoes?.nos && (
+                      <button type="button" onClick={() => reagir(m, m.reacoes!.nos!)} title="Sua reação (clique para tirar)">{m.reacoes.nos}</button>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -1590,7 +1802,7 @@ function Chat({
             <button onClick={() => setArq(false)} aria-label="Fechar arquivos">×</button>
           </div>
           <div className="arq-tabs" role="tablist">
-            {([["fotos", "🖼 Fotos e vídeos", arquivos.fotos.length], ["docs", "📄 Documentos", arquivos.docs.length], ["audios", "🎤 Áudios", arquivos.audios.length], ["links", "🔗 Links", arquivos.links.length]] as const).map(([k, l, n]) => (
+            {([["fotos", "🖼 Fotos e vídeos", arquivos.fotos.length], ["docs", "📄 Documentos", arquivos.docs.length], ["audios", "🎤 Áudios", arquivos.audios.length], ["links", "🔗 Links", arquivos.links.length], ["favoritas", "⭐ Favoritas", arquivos.favoritas.length]] as const).map(([k, l, n]) => (
               <button key={k} role="tab" aria-selected={arqTab === k} className={arqTab === k ? "on" : ""} onClick={() => setArqTab(k)}>{l} <small>{n}</small></button>
             ))}
           </div>
@@ -1629,6 +1841,18 @@ function Chat({
                 <span><b>{url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 50)}</b><small>{new Date(m.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</small></span>
               </a>
             )) : <p className="muted arq-vazio">Nenhum link nesta conversa.</p>)}
+            {arqTab === "favoritas" && (arquivos.favoritas.length ? arquivos.favoritas.slice().reverse().map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="arq-doc zx-fav"
+                onClick={() => document.getElementById(`m-${m.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                title="Ir para a mensagem"
+              >
+                <span className="arq-ic">⭐</span>
+                <span><b>{resumoMsg(m)}</b><small>{new Date(m.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · {m.direction === "in" ? "cliente" : "nós"}</small></span>
+              </button>
+            )) : <p className="muted arq-vazio">Nenhuma mensagem favoritada. No menu ⌄ de cada mensagem, use ⭐ Favoritar para guardar as importantes (endereço, medidas, combinados).</p>)}
           </div>
         </aside>
       )}
@@ -1687,6 +1911,37 @@ function Chat({
               ))}
             </div>
           )}
+          {emojiOpen && <EmojiPicker className="zx-emoji-caixa" onPick={porEmoji} onClose={() => setEmojiOpen(false)} />}
+          {catOpen && <CatalogoPop podeEditar={!!me?.perms.configuracoes} onUsar={usarProduto} onClose={() => setCatOpen(false)} />}
+          {fmtOpen && !grav.gravando && (
+            <span className="zx-fmt" onMouseDown={(e) => e.preventDefault()}>
+              {([["*", <b key="b">N</b>, "Negrito (Ctrl+B)"], ["_", <i key="i">I</i>, "Itálico (Ctrl+I)"], ["~", <s key="s">R</s>, "Riscado (Ctrl+Shift+X)"], ["```", <code key="m">{"</>"}</code>, "Monoespaçado (Ctrl+Shift+M)"]] as const).map(([mk, ic, t]) => (
+                <button key={mk} type="button" title={t} onClick={() => caixa.current && envolver(caixa.current, mk, setText)}>{ic}</button>
+              ))}
+              <small className="muted">Selecione o texto e clique. O cliente vê formatado no WhatsApp.</small>
+            </span>
+          )}
+          {grav.gravando ? (
+            <div className="zx-grav" role="status">
+              <span className="zx-grav-ponto" />
+              <b>Gravando áudio</b>
+              <span className="zx-grav-t">{mmss(grav.segundos)}</span>
+              <span style={{ flex: 1 }} />
+              <button type="button" onClick={() => grav.parar(true)} title="Descartar o áudio">🗑 Descartar</button>
+              <button type="button" className="primary" onClick={gravarOuEnviarAudio} disabled={sending}>Enviar áudio ➤</button>
+            </div>
+          ) : (
+          <>
+          <button
+            type="button"
+            className={`qr-btn zx-ic${emojiOpen ? " on" : ""}`}
+            title="Emojis"
+            aria-label="Emojis"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setEmojiOpen((v) => !v); setCatOpen(false); }}
+          >
+            😊
+          </button>
           <button
             type="button"
             className="qr-btn"
@@ -1699,8 +1954,16 @@ function Chat({
           >
             ⚡
           </button>
-          <button type="button" className="qr-btn" title="Enviar foto ou arquivo (PDF, Excel…) — ou cole um recorte de tela com Ctrl+V" aria-label="Enviar foto ou arquivo" onClick={() => fotoInput.current?.click()}>
+          <button type="button" className="qr-btn" title="Enviar foto ou arquivo (PDF, Excel…) — ou cole um recorte de tela com Ctrl+V, ou arraste o arquivo para a conversa" aria-label="Enviar foto ou arquivo" onClick={() => fotoInput.current?.click()} disabled={!!editando}>
             📎
+          </button>
+          {zapCanal && (
+            <button type="button" className={`qr-btn zx-ic${catOpen ? " on" : ""}`} title="Catálogo de produtos: envia foto, preço e descrição" aria-label="Catálogo" onClick={(e) => { e.stopPropagation(); setCatOpen((v) => !v); setEmojiOpen(false); }} disabled={!!editando}>
+              🛍
+            </button>
+          )}
+          <button type="button" className={`qr-btn zx-ic zx-aa${fmtOpen ? " on" : ""}`} title="Negrito, itálico, riscado" aria-label="Formatar texto" onClick={() => setFmtOpen((v) => !v)}>
+            Aa
           </button>
           <input
             ref={fotoInput}
@@ -1723,7 +1986,17 @@ function Chat({
               <button type="button" onClick={tirarFoto} aria-label="Tirar anexo">×</button>
             </div>
           )}
-          {respondendo && !foto && !rascunho && (
+          {editando && (
+            <div className="foto-pre resp-pre zx-editando">
+              <span>
+                <b>✏️ Editando mensagem</b>
+                <br />
+                <span className="muted">Mude o texto e clique em Salvar. O cliente vê &quot;editada&quot; no WhatsApp. (Esc cancela)</span>
+              </span>
+              <button type="button" onClick={() => { setEditando(null); setText(""); }} aria-label="Cancelar edição" title="Cancelar (Esc)">×</button>
+            </div>
+          )}
+          {respondendo && !foto && !rascunho && !editando && (
             <div className={`foto-pre resp-pre ${respondendo.direction === "in" ? "in" : "out"}`}>
               <span>
                 <b>↩ Respondendo a {respondendo.direction === "in" ? c.contact.name || "cliente" : "você"}</b>
@@ -1761,11 +2034,19 @@ function Chat({
             }}
             onKeyDown={onKey}
             onPaste={onPaste}
-            rows={rascunho && !foto ? Math.min(8, Math.max(2, text.split("\n").length)) : 1}
+            rows={(rascunho && !foto) || editando ? Math.min(8, Math.max(2, text.split("\n").length)) : Math.min(6, Math.max(1, text.split("\n").length))}
           />
-          <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto && !rascunho?.arquivo)}>
-            Enviar
-          </button>
+          {!text.trim() && !foto && !rascunho && !editando && zapCanal ? (
+            <button className="primary zx-mic" onClick={gravarOuEnviarAudio} disabled={sending} title="Gravar áudio (mensagem de voz)" aria-label="Gravar áudio">
+              🎤
+            </button>
+          ) : (
+            <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto && !rascunho?.arquivo)}>
+              {editando ? "Salvar" : "Enviar"}
+            </button>
+          )}
+          </>
+          )}
           {error && <div style={{ color: "var(--danger)", position: "absolute", bottom: 2, left: 12, fontSize: 12 }}>{error}</div>}
         </div>
       )}
@@ -1959,22 +2240,4 @@ function dayLabel(iso: string) {
   if (days === 1) return "Ontem";
   if (days < 7) return d.toLocaleDateString("pt-BR", { weekday: "long" });
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-/** Texto da mensagem com os links clicáveis (link comprido aparece encurtado). */
-function Linkified({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/[^\s]+)/g);
-  return (
-    <span className="txt">
-      {parts.map((part, i) => {
-        if (!/^https?:\/\//.test(part)) return part;
-        const short = part.replace(/^https?:\/\/(www\.)?/, "");
-        return (
-          <a key={i} href={part} target="_blank" rel="noreferrer" title={part}>
-            {short.length > 48 ? `${short.slice(0, 45)}…` : short}
-          </a>
-        );
-      })}
-    </span>
-  );
 }
