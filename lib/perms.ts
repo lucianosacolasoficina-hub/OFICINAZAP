@@ -99,7 +99,7 @@ export function permFor(method: string, path: string): PermKey | "admin" | null 
   if (/^\/api\/tarefas\/quadros\/[^/]+$/.test(path) && method === "DELETE") return "admin";
   if (path.startsWith("/api/tarefas")) return "tarefas";
   if (path.startsWith("/api/deals")) return "funil";
-  if ((path.startsWith("/api/settings") || path.startsWith("/api/quick-replies") || path.startsWith("/api/bling")) && escrita) return "configuracoes";
+  if ((path.startsWith("/api/settings") || path.startsWith("/api/quick-replies") || path.startsWith("/api/bling") || path.startsWith("/api/catalogo")) && escrita) return "configuracoes";
   if (path.startsWith("/api/departments") && escrita) return "departamentos";
   if (path.startsWith("/api/contacts") && escrita) return "contatos";
   return null;

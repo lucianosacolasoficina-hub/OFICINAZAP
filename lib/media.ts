@@ -11,6 +11,8 @@ const EXT: Record<string, string> = {
   "image/gif": "gif",
   "audio/ogg": "ogg",
   "audio/mpeg": "mp3",
+  "audio/webm": "webm",
+  "audio/mp4": "m4a",
   "video/mp4": "mp4",
   "application/pdf": "pdf",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",

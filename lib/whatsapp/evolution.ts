@@ -10,6 +10,7 @@ type EvolutionMessage = {
   documentMessage?: { caption?: string; fileName?: string };
   audioMessage?: unknown;
   stickerMessage?: unknown;
+  reactionMessage?: { key?: { id?: string }; text?: string };
 };
 
 /** Mensagem antiga (histórico) já convertida, nossa ou do cliente. */
@@ -183,6 +184,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     // Ignora mensagens nossas e de status.
     if (key.fromMe || !(isGroup || jid.endsWith("@s.whatsapp.net")) || !key.id || !message) return [];
 
+    // Reação (emoji) do cliente numa mensagem: não vira balão novo, fica em cima da mensagem reagida.
+    if (message.reactionMessage) {
+      const alvo = message.reactionMessage.key?.id;
+      if (!alvo || isGroup) return [];
+      return [{ waMessageId: key.id, phone: jid.split("@")[0], name: pushName, text: "", instance: body.instance, reacao: { alvo, emoji: message.reactionMessage.text ?? "" } }];
+    }
+
     let text =
       message.conversation ??
       message.extendedTextMessage?.text ??
@@ -333,6 +341,38 @@ export class EvolutionProvider implements WhatsAppProvider {
       fromMe: msg.fromMe,
     }, 30_000);
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+  }
+
+  /** Reação (emoji) numa mensagem; emoji vazio tira a reação. */
+  async sendReaction(msg: Omit<Citacao, "text">, emoji: string) {
+    const { status, data } = await this.call("POST", `/message/sendReaction/${this.instance}`, {
+      key: { id: msg.id, remoteJid: msg.remoteJid, fromMe: msg.fromMe },
+      reaction: emoji,
+    }, 30_000);
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+  }
+
+  /** Edita uma mensagem de texto nossa (o WhatsApp só deixa nos primeiros 15 minutos). */
+  async editText(phone: string, msg: Omit<Citacao, "text">, text: string) {
+    const { status, data } = await this.call("POST", `/chat/updateMessage/${this.instance}`, {
+      number: phone,
+      key: { id: msg.id, remoteJid: msg.remoteJid, fromMe: true },
+      text,
+    }, 30_000);
+    if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
+  }
+
+  /** Áudio gravado na hora: a Evolution converte e ele chega como mensagem de voz. */
+  async sendAudio(phone: string, file: MediaFile, citar?: Citacao) {
+    const res = await fetch(`${this.baseUrl}/message/sendWhatsAppAudio/${this.instance}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(90_000),
+      headers: { "Content-Type": "application/json", apikey: this.apiKey },
+      body: JSON.stringify({ number: phone, audio: file.data.toString("base64"), encoding: true, ...citado(citar) }),
+    });
+    if (!res.ok) throw new Error(`Evolution API ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { key?: { id?: string } };
+    return { waMessageId: data.key?.id };
   }
 
   async sendText(phone: string, text: string, citar?: Citacao) {
