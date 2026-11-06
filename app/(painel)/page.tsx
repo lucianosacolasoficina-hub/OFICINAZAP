@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { AudioPlayer, PdfAmpliado, PdfMiniatura, Transcricao } from "@/components/Midia";
 import { useMe } from "@/lib/useMe";
+import { notificar } from "@/lib/notificar";
 import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
 import { EtapasCrm, type Etapa } from "@/components/EtapasCrm";
@@ -315,12 +316,11 @@ export default function InboxPage() {
     if (antes === null || atrasadas <= antes) return;
     bipe();
     try {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification("OficinaZap: cliente esperando", {
-          body: `${atrasadas} ${atrasadas === 1 ? "cliente está" : "clientes estão"} esperando resposta há mais de ${lateMin} min.`,
-          tag: "oz-espera",
-        });
-      }
+      notificar("OficinaZap: cliente esperando", {
+        body: `${atrasadas} ${atrasadas === 1 ? "cliente está" : "clientes estão"} esperando resposta há mais de ${lateMin} min.`,
+        tag: "oz-espera",
+        url: "/",
+      });
     } catch {}
   }, [summary, atrasadas, lateMin]);
   useEffect(() => () => { document.title = document.title.replace(/^\(\d+\+?\) /, ""); }, []);

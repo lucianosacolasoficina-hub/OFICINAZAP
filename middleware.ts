@@ -41,5 +41,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // O webhook do WhatsApp fica de fora: ele é chamado pelo provedor, não por um atendente.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks).*)"],
+  // Os arquivos do app de celular (manifesto, ícones, service worker) também, para a instalação funcionar antes do login.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|manifest.webmanifest|sw.js|offline.html|icon-|apple-touch-icon).*)"],
 };
