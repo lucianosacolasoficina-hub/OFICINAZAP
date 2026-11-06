@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { AudioPlayer, PdfAmpliado, PdfMiniatura, Transcricao } from "@/components/Midia";
 import { useMe } from "@/lib/useMe";
@@ -1170,6 +1170,13 @@ function Chat({
     const t = setTimeout(() => setAviso(""), 2500);
     return () => clearTimeout(t);
   }, [aviso]);
+  // A caixa de digitação cresce junto com o texto (inclusive linhas que quebram sozinhas no celular).
+  useLayoutEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [text, foto, editando, rascunho, c.id]);
   function porEmoji(e: string) {
     const el = caixa.current;
     if (!el) return setText((t) => t + e);
@@ -2041,7 +2048,7 @@ function Chat({
               🎤
             </button>
           ) : (
-            <button className="primary" onClick={send} disabled={sending || (!text.trim() && !foto && !rascunho?.arquivo)}>
+            <button className="primary zx-enviar" onClick={send} disabled={sending || (!text.trim() && !foto && !rascunho?.arquivo)}>
               {editando ? "Salvar" : "Enviar"}
             </button>
           )}
