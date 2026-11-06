@@ -30,6 +30,12 @@ function midiaDa(message: Record<string, unknown> | null, tipo: string): Midia |
   return ((message[campo] ?? doc?.[campo]) as Midia | undefined) ?? null;
 }
 
+/** O link do arquivo traz a data de validade (oe=, em hexadecimal). Vencido, o WhatsApp responde 403/404. */
+function linkVencido(m: Midia) {
+  const oe = /[?&]oe=([0-9a-fA-F]+)/.exec(m.directPath ?? m.url ?? "")?.[1];
+  return !!oe && parseInt(oe, 16) * 1000 < Date.now();
+}
+
 const tamanho = (m: Midia) => Number(typeof m.fileLength === "object" ? m.fileLength?.low : m.fileLength) || 0;
 
 /** Baixa do servidor do WhatsApp e decifra (padrão do WhatsApp: HKDF-SHA256 + AES-256-CBC). */
@@ -65,6 +71,7 @@ export async function baixarMidiasPendentes(n = 15) {
         const m = midiaDa(p.message, p.media_type);
         if (!m) desistir = true; // a Evolution não guardou essa mensagem
         else if (tamanho(m) > LIMITE) desistir = true; // grande demais para guardar
+        else if (linkVencido(m)) desistir = true; // o WhatsApp já apagou do servidor: só existe no celular
         else {
           file = await baixarDireto(m, p.media_type).catch(() => null);
           // Pela Evolution só arquivos pequenos (ela segura o arquivo inteiro na memória).
