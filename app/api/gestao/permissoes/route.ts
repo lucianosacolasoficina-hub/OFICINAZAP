@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   if (!eu || !eu.active || !(await isDono(eu.id))) {
     return resp(req, { error: "só o dono do OficinaZap mexe na equipe e nos acessos", code: "nao_dono" }, 403);
   }
-  const b = (await req.json().catch(() => ({}))) as { acao?: string; id?: string; active?: boolean; role?: string; permissions?: Record<string, unknown> };
+  const b = (await req.json().catch(() => ({}))) as { acao?: string; id?: string; active?: boolean; role?: string; permissions?: Record<string, unknown>; name?: string; email?: string; password?: string };
   const db = supabaseAdmin();
   try {
     if (b.acao === "listar" || !b.acao) {
@@ -61,6 +61,25 @@ export async function POST(req: Request) {
       if (error) throw new Error(error.message);
       limparCacheAgent();
       return resp(req, { ok: true });
+    }
+    if (b.acao === "criar") {
+      // Cadastra um atendente novo pela central do sistema (mesma regra da tela Equipe).
+      const name = String(b.name ?? "").trim(), email = String(b.email ?? "").trim().toLowerCase();
+      if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return resp(req, { error: "informe nome e um e-mail válido" }, 400);
+      if (!b.password || String(b.password).length < 8) return resp(req, { error: "a senha inicial precisa ter pelo menos 8 caracteres" }, 400);
+      const p: Record<string, unknown> = {};
+      if (b.permissions && typeof b.permissions === "object") {
+        for (const k of Object.keys(PERMS)) if (typeof b.permissions[k] === "boolean") p[k] = b.permissions[k];
+        const c = b.permissions.canais;
+        if (Array.isArray(c)) p.canais = c.filter((x) => typeof x === "string" && UUID.test(x));
+      }
+      const { data, error } = await db.auth.admin.createUser({ email, password: String(b.password), email_confirm: true, user_metadata: { name } });
+      if (error) return resp(req, { error: /already|registered|exists/i.test(error.message) ? "já existe um usuário com esse e-mail no OficinaZap" : error.message }, 400);
+      const id = data.user.id;
+      const { error: e2 } = await db.from("agents").upsert({ id, name, role: b.role === "admin" ? "admin" : "agent", permissions: p, active: true });
+      if (e2) throw new Error(e2.message);
+      limparCacheAgent();
+      return resp(req, { ok: true, id });
     }
     return resp(req, { error: "ação desconhecida" }, 400);
   } catch (e) {
