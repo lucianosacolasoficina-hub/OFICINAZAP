@@ -138,8 +138,10 @@ function toApiMessages(history: Message[], images: Map<string, AgentImage>): Bet
       blocks.push({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } });
     }
     let text = m.body;
-    if (m.media_type && m.direction === "in" && !image) {
-      text = `[cliente enviou ${m.media_type}${m.media_type === "audio" ? " (ainda não consigo ouvir áudios)" : ""}] ${text}`;
+    if (m.media_type === "audio" && m.transcricao) {
+      text = `[áudio transcrito] ${m.transcricao}`;
+    } else if (m.media_type && m.direction === "in" && !image) {
+      text = `[cliente enviou ${m.media_type}${m.media_type === "audio" ? " (áudio ainda sem transcrição)" : ""}] ${text}`;
     }
     if (m.sender === "agent") text = `[Atendente] ${text}`;
     if (text.trim()) blocks.push({ type: "text", text });

@@ -58,7 +58,9 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
       if (path) await setMessageMedia(saved.id, path);
       // Áudio do cliente já vira texto (quando a transcrição está ligada).
       if (path && msg.mediaType === "audio" && transcricaoLigada()) {
-        transcreverMensagem({ ...saved, media_url: path }).catch((err) => console.error("Falha ao transcrever", msg.waMessageId, err));
+        // Espera até 25 s pela transcrição para a IA já responder sabendo o que o cliente falou; se demorar, segue sem ela.
+        const tr = transcreverMensagem({ ...saved, media_url: path }).catch((err) => console.error("Falha ao transcrever", msg.waMessageId, err));
+        if (conversation.status === "bot" && botEnabled) await Promise.race([tr, new Promise((r) => setTimeout(r, 25_000))]);
       }
     } catch (err) {
       console.error("Falha ao baixar mídia", msg.waMessageId, err);

@@ -46,12 +46,12 @@ export async function POST(req: Request) {
       const { data: cv } = await db.from("conversations").select("id, contact:contacts(name, phone, gestao_cliente_id, gestao_cliente_nome), connection:whatsapp_connections(name)").eq("id", b.conversa_id!).maybeSingle();
       if (!cv) return resp(req, { error: "conversa não encontrada" }, 404);
       const lim = Math.min(80, Math.max(5, Number(b.limite) || 40));
-      const { data: ms, error } = await db.from("messages").select("id, direction, body, media_type, media_url, created_at").eq("conversation_id", b.conversa_id!).order("created_at", { ascending: false }).limit(lim);
+      const { data: ms, error } = await db.from("messages").select("id, direction, body, media_type, media_url, created_at, transcricao").eq("conversation_id", b.conversa_id!).order("created_at", { ascending: false }).limit(lim);
       if (error) throw new Error(error.message);
       const c: any = (cv as any).contact || {};
       return resp(req, {
         conversa_id: cv.id, contato: c.name || c.phone, telefone: c.phone, cliente_no_sistema: c.gestao_cliente_nome || null, cliente_id_no_sistema: c.gestao_cliente_id || null, canal: (cv as any).connection?.name || "",
-        mensagens: (ms ?? []).reverse().map((m) => ({ id: m.id, quem: m.direction === "in" ? "cliente" : "atendente", quando: m.created_at, texto: m.media_type && m.media_type !== "text" && m.media_type !== "document" ? m.body || "" : m.media_type === "document" ? "" : m.body || "",
+        mensagens: (ms ?? []).reverse().map((m) => ({ id: m.id, quem: m.direction === "in" ? "cliente" : "atendente", quando: m.created_at, texto: m.media_type === "audio" && m.transcricao ? `[áudio transcrito] ${m.transcricao}` : m.media_type && m.media_type !== "text" && m.media_type !== "document" ? m.body || "" : m.media_type === "document" ? "" : m.body || "",
           arquivo: m.media_type && m.media_type !== "text" ? { tipo: m.media_type, nome: m.media_type === "document" ? m.body || "documento" : m.media_type, disponivel: !!m.media_url } : undefined })),
       });
     }

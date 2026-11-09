@@ -17,7 +17,7 @@ export const POST = route(async (req, ctx: IdCtx) => {
   const db = supabaseAdmin();
   const [{ data: conv }, { data: msgs }] = await Promise.all([
     db.from("conversations").select("id, contact:contacts(name, phone)").eq("id", id).maybeSingle(),
-    db.from("messages").select("direction, sender, body, media_type, created_at").eq("conversation_id", id).order("created_at", { ascending: false }).limit(40),
+    db.from("messages").select("direction, sender, body, media_type, created_at, transcricao").eq("conversation_id", id).order("created_at", { ascending: false }).limit(40),
   ]);
   if (!conv) throw new HttpError(404, "conversa não encontrada");
   const contato = (conv.contact as unknown as { name?: string; phone?: string } | null) ?? {};
@@ -27,7 +27,8 @@ export const POST = route(async (req, ctx: IdCtx) => {
     .map((m) => {
       const quem = m.direction === "in" ? "CLIENTE" : m.sender === "bot" ? "IA" : "ATENDENTE";
       const hora = new Date(m.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-      return `[${hora}] ${quem}: ${m.body || (m.media_type ? `(${m.media_type})` : "")}`;
+      const txt = m.media_type === "audio" && m.transcricao ? `(áudio) ${m.transcricao}` : m.body || (m.media_type ? `(${m.media_type})` : "");
+      return `[${hora}] ${quem}: ${txt}`;
     })
     .join("\n");
   const kb = await getSetting("knowledge_base", "");
