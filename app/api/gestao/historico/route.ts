@@ -1,6 +1,6 @@
 import { route, HttpError } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { gestaoAtiva, historicoGestao, GESTAO_SITE } from "@/lib/gestao";
+import { gestaoAtiva, historicoGestao, colagemGestao, GESTAO_SITE } from "@/lib/gestao";
 
 // Histórico de pedidos e propostas do cliente da conversa (vínculo manual ou pelo telefone).
 export const GET = route(async (req) => {
@@ -16,6 +16,11 @@ export const GET = route(async (req) => {
   if (!ct) throw new HttpError(404, "contato não encontrado");
   const vinculado = !!ct.gestao_cliente_id;
   const dados = vinculado || (!ct.is_group && !/^(ig|fb|mail):/.test(String(ct.phone))) ? await historicoGestao({ cliente: ct.gestao_cliente_id, telefone: vinculado || /^(ig|fb|mail):/.test(String(ct.phone)) ? null : ct.phone }) : null;
+  // Situação da colagem (app Coladeira) de cada pedido; se falhar, o histórico sai sem ela.
+  if (dados?.pedidos?.length) {
+    const col = await colagemGestao(dados.pedidos.map((p) => p.id)).catch(() => null);
+    if (col) for (const p of dados.pedidos) p.colagem = col[p.id] ?? null;
+  }
   return {
     ativo: true,
     site: GESTAO_SITE,

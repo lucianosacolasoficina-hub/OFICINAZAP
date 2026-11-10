@@ -98,6 +98,7 @@ export type HistPedido = {
   id: string; numero: string; etapa: string; entrada: string; entrega: string | null; atrasado: boolean;
   total: number; aberto: number; pagamento: string | null; representada: boolean; nfe: string | null;
   itens: string | null; os: { numero: string; etapa: string }[];
+  colagem?: ColagemPedido | null;
 };
 export type HistProposta = { id: string; numero: string; data: string; situacao: string | null; total: number; itens: string | null };
 export type HistCliente = { id: string; nome: string | null; fantasia?: string | null; documento?: string | null; cidade?: string | null; uf?: string | null; email?: string | null; telefone?: string | null };
@@ -150,4 +151,21 @@ export function ocorrenciasGestao(col: "pedidos" | "orcamentos", id: string) {
 
 export function lancarOcorrenciaGestao(col: "pedidos" | "orcamentos", id: string, texto: string, tipo: string, por: string) {
   return rpcGestao<{ ok: boolean; em: string }>("zap_ocorrencia_add", { p_col: col, p_id: id, p_texto: texto, p_tipo: tipo, p_por: por });
+}
+
+// ---------- Colagem (app Coladeira: OS de colagem ligadas ao pedido) ----------
+export type ColagemOS = {
+  numero: number; status: "aguardando" | "em_servico" | "finalizada" | string; coladeira: string | null; descricao: string | null;
+  total: number; feitas: number; perda: number; previsao: string | null;
+  iniciadoEm: string | null; finalizadoEm: string | null; retiradoEm: string | null; faltaMaterial: string | null; ultimoApontamento: string | null;
+};
+export type ColagemPedido = {
+  total: number; feitas: number; perda: number; abertas: number; previsao: string | null; semPrevisao: number;
+  concluida: boolean; faltaMaterial: boolean; atualizadoEm: string | null; os: ColagemOS[];
+};
+
+/** Situação da colagem de vários pedidos de uma vez ({ id do pedido: colagem }). Null se a função não responder. */
+export function colagemGestao(ids: string[]) {
+  if (!ids.length) return Promise.resolve({} as Record<string, ColagemPedido>);
+  return rpcGestao<Record<string, ColagemPedido>>("zap_colagem", { p_ids: ids });
 }

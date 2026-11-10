@@ -7,6 +7,15 @@ type Ped = {
   id: string; numero: string; etapa: string; entrada: string; entrega: string | null; atrasado: boolean;
   total: number; aberto: number; pagamento: string | null; representada: boolean; nfe: string | null;
   itens: string | null; os: { numero: string; etapa: string }[];
+  colagem?: Colagem | null;
+};
+type ColOS = {
+  numero: number; status: string; coladeira: string | null; descricao: string | null; total: number; feitas: number; perda: number;
+  previsao: string | null; iniciadoEm: string | null; finalizadoEm: string | null; retiradoEm: string | null; faltaMaterial: string | null; ultimoApontamento: string | null;
+};
+type Colagem = {
+  total: number; feitas: number; perda: number; abertas: number; previsao: string | null; semPrevisao: number;
+  concluida: boolean; faltaMaterial: boolean; atualizadoEm: string | null; os: ColOS[];
 };
 type Prop = { id: string; numero: string; data: string; situacao: string | null; total: number; itens: string | null };
 type Cli = { id: string; nome: string | null; fantasia?: string | null; documento?: string | null; cidade?: string | null; uf?: string | null; telefone?: string | null };
@@ -120,6 +129,86 @@ function Ocorrencias({ col, id, rotulo }: { col: "pedidos" | "orcamentos"; id: s
   );
 }
 
+const n0 = (v: number) => (v || 0).toLocaleString("pt-BR");
+const pct = (f: number, t: number) => (t > 0 ? Math.min(100, Math.round((f / t) * 100)) : 0);
+const COL_ST: Record<string, [string, string]> = {
+  aguardando: ["Aguardando início", "warn"],
+  em_servico: ["Colando", "ok"],
+  finalizada: ["Colagem pronta", "fim"],
+};
+const hoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+
+/** Previsão da colagem em palavras ("hoje", "amanhã", "atrasada desde 09/11"…). */
+function prevTexto(d: string | null) {
+  if (!d) return "sem previsão";
+  const h = hoje();
+  if (d < h) return `previsão era ${dBR(d)} (atrasada)`;
+  if (d === h) return "previsão: hoje";
+  const am = new Date(Date.parse(h) + 864e5).toISOString().slice(0, 10);
+  if (d === am) return "previsão: amanhã";
+  return `previsão: ${dBR(d)}`;
+}
+
+/** Espaço da colagem dentro do pedido: andamento das coladeiras e previsão de término. */
+function ColagemPedido({ c }: { c: Colagem }) {
+  const [aberto, setAberto] = useState(false);
+  const p = pct(c.feitas, c.total);
+  const atrasada = !c.concluida && !!c.previsao && c.previsao < hoje();
+  const situacao = c.concluida
+    ? "✅ Colagem concluída"
+    : c.os.every((o) => o.status === "aguardando")
+      ? "⏳ Aguardando início da colagem"
+      : "👜 Em colagem";
+  return (
+    <div className={`hp-col${c.concluida ? " pronta" : atrasada ? " late" : ""}`}>
+      <button className="hp-col-top" onClick={() => setAberto(!aberto)} aria-expanded={aberto}>
+        <span className="hp-col-tit">{situacao}</span>
+        <span className="hp-col-n">{n0(c.feitas)} de {n0(c.total)} · {p}%</span>
+      </button>
+      <div className="hp-col-bar"><i style={{ width: `${p}%` }} /></div>
+      <div className="hp-col-info">
+        {c.concluida ? (
+          <span>Todas as {c.os.length} OS de colagem finalizadas</span>
+        ) : (
+          <span className={atrasada ? "hp-deb" : ""}>
+            <b>{prevTexto(c.previsao)}</b>
+            {c.semPrevisao > 0 && c.previsao ? ` · ${c.semPrevisao} OS ainda sem previsão` : ""}
+          </span>
+        )}
+        {c.faltaMaterial && <span className="gz-tag">falta material</span>}
+        <button className="gz-link hp-col-ver" onClick={() => setAberto(!aberto)}>{aberto ? "esconder" : `ver ${c.os.length} OS`}</button>
+      </div>
+      {aberto && (
+        <ul className="hp-col-os">
+          {c.os.map((o) => {
+            const [rot, cls] = COL_ST[o.status] ?? [o.status, ""];
+            return (
+              <li key={o.numero}>
+                <div className="hp-col-l1">
+                  <b>OS {o.numero}</b>
+                  <span>{o.coladeira || "sem coladeira"}</span>
+                  <span className={`hp-col-st ${cls}`}>{rot}</span>
+                </div>
+                <div className="hp-sm muted">
+                  {n0(o.feitas)} de {n0(o.total)} coladas ({pct(o.feitas, o.total)}%)
+                  {o.perda > 0 ? ` · perda ${n0(o.perda)}` : ""}
+                  {o.status === "finalizada"
+                    ? ` · pronta em ${dBR(o.finalizadoEm)}${o.retiradoEm ? ` · recolhida ${dBR(o.retiradoEm)}` : " · aguardando recolher"}`
+                    : ` · ${prevTexto(o.previsao)}`}
+                </div>
+                {o.descricao && <div className="hp-sm hp-it">{o.descricao}</div>}
+                {o.faltaMaterial && <div className="hp-sm hp-deb">⚠ Falta material: {o.faltaMaterial}</div>}
+                {o.ultimoApontamento && o.status !== "finalizada" && <div className="hp-sm muted">Último lançamento da coladeira: {quando(new Date(new Date(o.ultimoApontamento).getTime() - 3 * 3600e3).toISOString())}</div>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {c.atualizadoEm && <div className="hp-sm muted hp-col-at">App Coladeira · atualizado {new Date(c.atualizadoEm).toLocaleString("pt-BR").slice(0, 17)}</div>}
+    </div>
+  );
+}
+
 /** Coloca um texto na caixa de resposta da conversa (o atendente revisa e envia). */
 export function rascunho(texto: string) {
   window.dispatchEvent(new CustomEvent("zap-rascunho", { detail: texto }));
@@ -202,7 +291,11 @@ export function HistoricoPedidos({ contactId, contactName, onClose }: { contactI
   function textoStatus(p: Ped) {
     const nome = cli?.fantasia || cli?.nome || "";
     const prod = p.os.length ? p.os.map((o) => o.etapa).join(", ") : p.etapa;
-    return `Olá${nome ? ", " + nome : ""}! Atualização do seu pedido nº ${p.numero}: está na etapa *${prod}*. Previsão de entrega: ${dBR(p.entrega)}. Qualquer dúvida, estou à disposição.`;
+    const c = p.colagem;
+    const col = c && !c.concluida
+      ? ` Suas sacolas estão na colagem: ${pct(c.feitas, c.total)}% prontas${c.previsao && c.previsao >= hoje() ? `, com previsão de término em ${dBR(c.previsao)}` : ""}.`
+      : c?.concluida ? " A colagem das sacolas já foi concluída." : "";
+    return `Olá${nome ? ", " + nome : ""}! Atualização do seu pedido nº ${p.numero}: está na etapa *${prod}*.${col} Previsão de entrega: ${dBR(p.entrega)}. Qualquer dúvida, estou à disposição.`;
   }
 
   return (
@@ -295,6 +388,7 @@ export function HistoricoPedidos({ contactId, contactName, onClose }: { contactI
                         {p.aberto > 0.009 ? <> · <span className="hp-deb">falta receber {brl(p.aberto)}</span></> : p.pagamento === "pago" ? " · pago" : ""}
                       </div>
                       {p.itens && <div className="hp-sm hp-it" title={p.itens}>{p.itens}</div>}
+                      {p.colagem && <ColagemPedido c={p.colagem} />}
                       <div className="hp-acts">
                         <button className={`hp-oc-btn${ocAberta === p.id ? " on" : ""}`} onClick={() => setOcAberta(ocAberta === p.id ? null : p.id)}>📋 Ocorrências</button>
                         <a href={`${site}/#ped=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener">Abrir no sistema ↗</a>
