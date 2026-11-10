@@ -1083,3 +1083,25 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
   .zx-grav { min-height: 52px; flex-wrap: wrap; }
   .zx-grav button { min-height: 44px; }
 }
+
+/* Colagem (app Coladeira) dentro do pedido */
+.hp-col { margin-top: 4px; border: 1px solid #ecdcc6; background: #fdf8f1; border-radius: 9px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; }
+.hp-col.pronta { background: #f0faf3; border-color: #cfe9d8; }
+.hp-col.late { background: #fff5f5; border-color: #f3c9c9; }
+.hp-col-top { display: flex; align-items: baseline; gap: 8px; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.hp-col-tit { font-weight: 700; flex: 1; }
+.hp-col-n { font-size: 12px; font-weight: 600; color: #8a5a2b; white-space: nowrap; }
+.hp-col.pronta .hp-col-n { color: #2d7a4f; }
+.hp-col-bar { height: 6px; background: #ecdcc6; border-radius: 99px; overflow: hidden; }
+.hp-col-bar i { display: block; height: 100%; background: #8a5a2b; border-radius: 99px; }
+.hp-col.pronta .hp-col-bar i { background: #2d7a4f; }
+.hp-col-info { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; font-size: 12.5px; }
+.hp-col-ver { margin: 0 0 0 auto !important; font-size: 12px !important; font-weight: 600; }
+.hp-col-os { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hp-col-os li { background: #fff; border: 1px solid #ecdcc6; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+.hp-col-l1 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hp-col-l1 span:nth-child(2) { flex: 1; min-width: 0; }
+.hp-col-st { font-size: 11px; font-weight: 700; border-radius: 99px; padding: 1px 8px; background: #edf2f7; color: #4a5568; white-space: nowrap; }
+.hp-col-st.ok { background: #dcefe3; color: #2d7a4f; }
+.hp-col-st.warn { background: #f8e8cf; color: #b4731a; }
+.hp-col-at { font-size: 11px !important; }
