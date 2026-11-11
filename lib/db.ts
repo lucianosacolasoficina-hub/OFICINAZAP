@@ -76,7 +76,9 @@ export async function upsertContact(phone: string, name?: string): Promise<Conta
   const found = check(await db.from("contacts").select("*").in("phone", phoneVariants(phone))) as Contact[];
   const existing = found.find((c) => c.phone === phone) ?? found[0] ?? null;
   if (existing) {
-    if (name && !existing.name) {
+    // Nome vazio ou que é só o número conta como sem nome: o nome do perfil do WhatsApp entra no lugar.
+    const semNome = !existing.name || /^[+\d\s().-]+$/.test(existing.name.trim());
+    if (name && semNome && !/^[+\d\s().-]+$/.test(name.trim())) {
       return check(await db.from("contacts").update({ name }).eq("id", existing.id).select().single());
     }
     return existing;

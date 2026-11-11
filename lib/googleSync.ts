@@ -75,7 +75,7 @@ export async function sincronizarGoogle(opts: { completo?: boolean } = {}) {
   if (rodando) return { ocupado: true };
   rodando = true;
   const db = supabaseAdmin();
-  const stats = { lidosGoogle: 0, nomesAtualizados: 0, ligados: 0, criadosNoGoogle: 0, nomesEnviados: 0 };
+  const stats = { lidosGoogle: 0, nomesAtualizados: 0, ligados: 0, criadosNoGoogle: 0, nomesEnviados: 0, nomesDoWhatsapp: 0, soNumero: 0 };
   try {
     const { data } = await db.from("google_contatos").select("*").eq("id", 1).maybeSingle();
     const c = data as Cfg | null;
@@ -95,8 +95,10 @@ export async function sincronizarGoogle(opts: { completo?: boolean } = {}) {
       if (pageToken) u.searchParams.set("pageToken", pageToken);
       if (syncToken) u.searchParams.set("syncToken", syncToken);
       const r = await fetch(u, { headers: h });
-      if (r.status === 410 && syncToken) { syncToken = null; pageToken = undefined; continue; } // token vencido: lê tudo de novo
-      const j = (await r.json()) as { connections?: Person[]; nextPageToken?: string; nextSyncToken?: string; error?: { message?: string } };
+      const j = (await r.json().catch(() => ({}))) as { connections?: Person[]; nextPageToken?: string; nextSyncToken?: string; error?: { message?: string; status?: string; details?: { reason?: string }[] } };
+      // Token vencido (o Google responde 410 ou 400 "Sync token is expired"): lê tudo de novo.
+      const vencido = r.status === 410 || /sync token/i.test(j.error?.message ?? "") || (j.error?.details ?? []).some((d) => d.reason === "EXPIRED_SYNC_TOKEN");
+      if (!r.ok && syncToken && vencido) { syncToken = null; pageToken = undefined; continue; }
       if (!r.ok) throw new Error(j.error?.message ?? `Google Contatos ${r.status}`);
       for (const p of j.connections ?? []) {
         stats.lidosGoogle++;
@@ -117,7 +119,35 @@ export async function sincronizarGoogle(opts: { completo?: boolean } = {}) {
       if (j.nextSyncToken) novoSync = j.nextSyncToken;
     } while (pageToken);
 
-    // 2) Do OficinaZap para o Google: contatos com nome que ainda não estão lá (em lotes de 200).
+    // 2a) Contato sem nome: usa o nome de perfil do WhatsApp que a pessoa mandou numa mensagem.
+    const { data: nomes } = await db.rpc("zap_nomes_do_whatsapp", { p_limite: 1000 });
+    for (const n of (nomes ?? []) as { contact_id: string; nome: string }[]) {
+      if (!n.nome || pareceTelefone(n.nome)) continue;
+      await db.from("contacts").update({ name: n.nome.slice(0, 120) }).eq("id", n.contact_id);
+      stats.nomesDoWhatsapp++;
+    }
+
+    // 2b) Do OficinaZap para o Google: contatos que ainda não estão lá (em lotes de 200).
+    //     Com nome: todos. Sem nome: só quem já conversou, salvo só com o número (o nome vai depois, no passo 3).
+    const criar = async (lote: { id: string; name: string | null; phone: string }[]) => {
+      const comNome = (x: { name: string | null }) => !!x.name && !pareceTelefone(x.name);
+      const r = await fetch(`${API}/people:batchCreateContacts?readMask=names,phoneNumbers`, {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify({
+          contacts: lote.map((x) => ({ contactPerson: { ...(comNome(x) ? { names: [{ unstructuredName: x.name }] } : {}), phoneNumbers: [{ value: `+${x.phone}` }] } })),
+        }),
+      });
+      const j = (await r.json()) as { createdPeople?: { person?: Person }[]; error?: { message?: string } };
+      if (!r.ok) throw new Error(j.error?.message ?? `Google Contatos ${r.status}`);
+      const criados = j.createdPeople ?? [];
+      for (let i = 0; i < lote.length; i++) {
+        const p = criados[i]?.person;
+        const nome = comNome(lote[i]) ? lote[i].name : null;
+        await db.from("contacts").update(p ? { google_resource: p.resourceName, google_etag: p.etag ?? null, google_nome: nome } : { google_resource: "erro" }).eq("id", lote[i].id);
+        if (p) { stats.criadosNoGoogle++; if (!nome) stats.soNumero++; }
+      }
+    };
     for (let volta = 0; volta < 20; volta++) {
       const { data: novos } = await db
         .from("contacts")
@@ -130,19 +160,24 @@ export async function sincronizarGoogle(opts: { completo?: boolean } = {}) {
         .limit(400);
       const lote = (novos ?? []).filter((x) => /^\d{10,15}$/.test(String(x.phone)) && !pareceTelefone(x.name)).slice(0, 200);
       if (!lote.length) break;
-      const r = await fetch(`${API}/people:batchCreateContacts?readMask=names,phoneNumbers`, {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({ contacts: lote.map((x) => ({ contactPerson: { names: [{ unstructuredName: x.name }], phoneNumbers: [{ value: `+${x.phone}` }] } })) }),
-      });
-      const j = (await r.json()) as { createdPeople?: { person?: Person }[]; error?: { message?: string } };
-      if (!r.ok) throw new Error(j.error?.message ?? `Google Contatos ${r.status}`);
-      const criados = j.createdPeople ?? [];
-      for (let i = 0; i < lote.length; i++) {
-        const p = criados[i]?.person;
-        await db.from("contacts").update(p ? { google_resource: p.resourceName, google_etag: p.etag ?? null, google_nome: lote[i].name } : { google_resource: "erro" }).eq("id", lote[i].id);
-        if (p) stats.criadosNoGoogle++;
-      }
+      await criar(lote);
+      if (lote.length < 200) break;
+    }
+    for (let volta = 0; volta < 20; volta++) {
+      const { data: novos } = await db
+        .from("contacts")
+        .select("id, name, phone, conversations!inner(id)")
+        .eq("is_group", false)
+        .is("google_resource", null)
+        .order("created_at", { ascending: false })
+        .limit(1, { foreignTable: "conversations" })
+        .limit(1000);
+      const lote = (novos ?? [])
+        .filter((x) => /^\d{10,15}$/.test(String(x.phone)) && pareceTelefone(x.name))
+        .slice(0, 200)
+        .map((x) => ({ id: x.id as string, name: (x.name as string | null) ?? null, phone: String(x.phone) }));
+      if (!lote.length) break;
+      await criar(lote);
       if (lote.length < 200) break;
     }
 
