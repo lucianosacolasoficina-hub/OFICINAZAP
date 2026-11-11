@@ -23,10 +23,13 @@ setInterval(() => {
   sincronizarTodosImap().catch((e) => console.error("sync gmail", e));
 }, 60_000);
 
-// Contatos com o Google Contatos (nos dois sentidos) a cada 15 minutos.
+// Contatos com o Google Contatos (nos dois sentidos) a cada 5 minutos, e 1 minuto depois de subir.
+setTimeout(() => {
+  sincronizarGoogle().catch((e) => console.error("sync Google Contatos", e));
+}, 60_000);
 setInterval(() => {
   sincronizarGoogle().catch((e) => console.error("sync Google Contatos", e));
-}, 15 * 60_000);
+}, 5 * 60_000);
 
 // Fotos de perfil do WhatsApp: busca aos poucos (25 por minuto) para a lista abrir já com as fotos.
 setInterval(() => {
