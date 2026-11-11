@@ -1,5 +1,6 @@
 import { getConnection } from "./connections";
 import { setMessageMedia } from "./db";
+import { origensDe } from "./redirecionar";
 import { saveMedia } from "./media";
 import { supabaseAdmin } from "./supabase/admin";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
@@ -20,7 +21,14 @@ export async function buscarMidiaFaltando(m: Linha): Promise<string | null> {
     const { data: c } = await supabaseAdmin().from("conversations").select("connection_id").eq("id", m.conversation_id).maybeSingle();
     const conn = c?.connection_id ? await getConnection(c.connection_id) : null;
     if (!conn?.instance) return null;
-    const file = await whatsapp(conn.instance).downloadMedia({ mediaRef: m.wa_message_id } as IncomingMessage);
+    let file = await whatsapp(conn.instance).downloadMedia({ mediaRef: m.wa_message_id } as IncomingMessage).catch(() => null);
+    // Conversa que veio de um número antigo redirecionado para este: o arquivo pode estar guardado no antigo.
+    if (!file) {
+      for (const o of await origensDe(conn.id)) {
+        file = await whatsapp(o.instance).downloadMedia({ mediaRef: m.wa_message_id } as IncomingMessage).catch(() => null);
+        if (file) break;
+      }
+    }
     const path = file && (await saveMedia(m.conversation_id, m.id, file));
     if (path) await setMessageMedia(m.id, path);
     return path || null;

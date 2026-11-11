@@ -4,6 +4,7 @@ import { guardarMidiaPorWaId } from "./midiaFaltando";
 import { transcreverMensagem, transcricaoLigada } from "./transcrever";
 import { supabaseAdmin } from "./supabase/admin";
 import { EvolutionProvider, type HistMsg } from "./whatsapp/evolution";
+import { destinoDe } from "./redirecionar";
 
 // Conversas antigas do WhatsApp (histórico) entram no OficinaZap sem acionar a IA e sem notificar.
 // Conversa antiga fica "encerrada"; só fica aguardando se a última mensagem for do cliente nos últimos 2 dias.
@@ -19,11 +20,14 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
   }
   let conversas = 0;
   let mensagens = 0;
+  // Número antigo redirecionado para outro: as conversas entram no número novo (grupos ficam onde estão).
+  const destino = await destinoDe(conn);
   for (const [, lista] of porChat) {
     lista.sort((a, b) => a.ts - b.ts);
     const ult = lista[lista.length - 1];
     const nome = lista.find((m) => !m.fromMe && m.name)?.name;
     const contato = ult.isGroup ? await upsertGroup(ult.phone) : await upsertContact(ult.phone, nome);
+    const alvo = ult.isGroup ? conn : destino;
     // Usa a conversa em andamento desse cliente neste número (a mesma em que o cliente escreve);
     // só se não houver nenhuma, a mais recente (mesmo encerrada); se não houver nenhuma, cria uma.
     // Antes pegava sempre a mais nova: uma cópia encerrada criada depois "roubava" as mensagens
@@ -32,7 +36,7 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
       .from("conversations")
       .select("id, last_message_at, status")
       .eq("contact_id", contato.id)
-      .eq("connection_id", conn.id)
+      .eq("connection_id", alvo.id)
       .order("created_at", { ascending: false })
       .limit(20);
     const existente = (candidatas ?? []).find((c) => c.status !== "closed") ?? (candidatas ?? [])[0];
@@ -44,8 +48,8 @@ export async function importarMensagens(conn: Connection, msgs: HistMsg[]) {
         .from("conversations")
         .insert({
           contact_id: contato.id,
-          connection_id: conn.id,
-          department_id: conn.department_id,
+          connection_id: alvo.id,
+          department_id: alvo.department_id,
           status: recente ? "waiting" : "closed",
           last_message_at: ultIso,
           last_message_preview: (ult.text || `[${ult.mediaType}]`).slice(0, 200),

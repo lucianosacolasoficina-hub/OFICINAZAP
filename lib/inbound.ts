@@ -17,6 +17,7 @@ import {
   upsertContact,
   upsertGroup,
 } from "./db";
+import { avisarNumeroNovo, destinoDe } from "./redirecionar";
 import { consultarGestao, gestaoAtiva, resumoParaIA } from "./gestao";
 import { loadMedia, saveMedia } from "./media";
 import { transcreverMensagem, transcricaoLigada } from "./transcrever";
@@ -36,8 +37,13 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
   }
   const botEnabled = await getSetting<boolean>("bot_enabled", true);
   // Com vários números, a conversa fica ligada ao número que recebeu a mensagem e a resposta sai por ele.
-  const connection = msg.instance ? await connectionByInstance(msg.instance) : null;
+  const recebido = msg.instance ? await connectionByInstance(msg.instance) : null;
+  // Número antigo redirecionado para outro: a conversa e a resposta ficam no número novo (grupos não mudam).
+  const connection = msg.isGroup ? recebido : await destinoDe(recebido);
+  const redirecionado = !!recebido && !!connection && connection.id !== recebido.id;
   const instance = connection?.instance ?? msg.instance;
+  // A mensagem (e o arquivo dela) está no número que recebeu.
+  const instRecebeu = recebido?.instance ?? msg.instance;
   const contact = msg.isGroup ? await groupContact(msg.phone, instance) : await upsertContact(msg.phone, msg.name);
   // A IA não responde em grupos: a conversa já abre esperando um atendente.
   const conversation = await activeConversation(contact.id, botEnabled && !msg.isGroup, connection);
@@ -50,10 +56,13 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
     wa_message_id: msg.waMessageId,
   });
   if (!saved) return;
+  if (redirecionado && recebido) {
+    void avisarNumeroNovo(recebido, contact.phone, conversation.id).catch((err) => console.error("Falha no aviso do número novo", err));
+  }
 
   if (msg.mediaRef) {
     try {
-      const file = await whatsapp(instance).downloadMedia(msg);
+      const file = await whatsapp(instRecebeu).downloadMedia(msg);
       const path = file && (await saveMedia(conversation.id, saved.id, file));
       if (path) await setMessageMedia(saved.id, path);
       // Áudio do cliente já vira texto (quando a transcrição está ligada).
