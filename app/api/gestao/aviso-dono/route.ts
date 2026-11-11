@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const email = await emailDaGestao(token);
   if (!email) return resp(req, { error: "sessão do sistema inválida" }, 401);
-  const b = (await req.json().catch(() => ({}))) as { col?: string; id?: string };
+  const b = (await req.json().catch(() => ({}))) as { col?: string; id?: string; tipo?: string };
   const col = b.col === "orcamentos" ? "orcamentos" : b.col === "pedidos" ? "pedidos" : "";
   const id = String(b.id ?? "");
   if (!col || !/^[A-Za-z0-9_-]{3,60}$/.test(id)) return resp(req, { error: "documento inválido" }, 400);
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const r = await fetch(`${url}/rest/v1/docs?col=eq.${col}&id=eq.${encodeURIComponent(id)}&select=data`, { headers: { apikey: anon, Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => null);
   const rows = r?.ok ? ((await r.json().catch(() => [])) as { data?: any }[]) : [];
   const d = rows[0]?.data;
+  if (b.tipo === "excecao") return avisarExcecao(req, email, col, id, d);
   const lp = d?.libPreco;
   if (!d || !lp || lp.status !== "pendente") return resp(req, { enviado: false, motivo: "não há liberação de preço pendente neste documento" });
 
@@ -56,6 +57,37 @@ export async function POST(req: Request) {
     `Liberar ou recusar: ${SITE}/#libpreco-${col === "pedidos" ? "p" : "o"}-${id}`,
   ].filter((x) => x !== "").join("\n");
 
+  return enviar(req, email, para, de, texto, chave);
+}
+
+// Pedido travado (pagamento/layout) liberado como exceção por alguém que não é o dono: avisa o dono.
+async function avisarExcecao(req: Request, email: string, col: string, id: string, d: any) {
+  const ex = d?.libExcecao;
+  if (col !== "pedidos" || !d || !ex || !ex.em) return resp(req, { enviado: false, motivo: "este pedido não foi liberado como exceção" });
+  const quando = Date.parse(ex.emIso || "") || 0;
+  if (!quando || Date.now() - quando > 30 * 60_000) return resp(req, { enviado: false, motivo: "liberação antiga" });
+  const chave = `exc:${id}:${ex.emIso}`;
+  if ((enviados.get(chave) ?? 0) > Date.now() - 10 * 60_000) return resp(req, { enviado: false, motivo: "aviso já enviado" });
+  enviados.set(chave, Date.now());
+  const cfg = await getSetting<{ para?: string; de?: string }>("aviso_dono", PADRAO).catch(() => PADRAO);
+  const para = String(cfg?.para || PADRAO.para).replace(/\D/g, ""), de = String(cfg?.de || PADRAO.de).replace(/\D/g, "");
+  const itens = (Array.isArray(d.itens) ? d.itens : []).filter((i: any) => i && i.desc);
+  const total = itens.reduce((s: number, i: any) => s + Number(i.qtd || 0) * Number(i.valor || 0), 0) + Number(d.frete || 0) + Number(d.outros || 0) - Number(d.desconto || 0);
+  const dt = new Date(quando).toLocaleString("pt-BR", { timeZone: "America/Bahia", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const texto = [
+    `👑 *Pedido liberado como exceção* · ${corta(ex.porNome || "equipe", 30)}`,
+    `Pedido nº ${corta(d.numero, 12)} · ${corta(d.clienteNome, 50)}`,
+    total > 0 ? `Valor: ${brl(total)}` : "",
+    ex.pend ? `Estava pendente: ${corta(ex.pend, 160)}` : "",
+    `Observação: ${corta(ex.motivo, 300)}`,
+    `Liberado em ${dt}${ex.senha ? " · confirmado com senha" : ""}`,
+    "",
+    `Ver o pedido: ${SITE}/#ped=${id}`,
+  ].filter((x) => x !== "").join("\n");
+  return enviar(req, email, para, de, texto, chave);
+}
+
+async function enviar(req: Request, email: string, para: string, de: string, texto: string, chave: string) {
   // sai pelo número da empresa; se ele estiver fora do ar, tenta os outros números conectados
   const conns = (await listConnections()).filter((c) => c.channel !== "instagram" && c.channel !== "messenger" && c.channel !== "email" && c.instance && !/^(ig|fb|mail|imap):/.test(c.instance) && (c.phone || "") !== para);
   conns.sort((a, c) => Number((c.phone || "") === de) - Number((a.phone || "") === de));
