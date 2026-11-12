@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   try {
     if (b.acao === "listar" || !b.acao) {
       const [{ data: agents, error }, users, { data: canais }] = await Promise.all([
-        db.from("agents").select("id, name, role, permissions, active, created_at").order("created_at"),
+        db.from("agents").select("id, name, role, permissions, active, created_at, archived_at").order("created_at"),
         db.auth.admin.listUsers({ perPage: 200 }),
         db.from("whatsapp_connections").select("id, name, channel, phone").order("created_at"),
       ]);
@@ -61,6 +61,38 @@ export async function POST(req: Request) {
       if (error) throw new Error(error.message);
       limparCacheAgent();
       return resp(req, { ok: true });
+    }
+    if (b.acao === "excluir" || b.acao === "voltar") {
+      // Botão ✕ da central: sem histórico exclui; com histórico tira da lista e bloqueia (o histórico fica).
+      if (!UUID.test(String(b.id))) return resp(req, { error: "atendente inválido" }, 400);
+      if (b.id === eu.id) return resp(req, { error: "você não pode excluir a sua própria conta" }, 400);
+      const { data: ag } = await db.from("agents").select("id, name, role").eq("id", b.id!).maybeSingle();
+      if (!ag) return resp(req, { error: "atendente não encontrado" }, 404);
+      if (b.acao === "voltar") {
+        const { error } = await db.from("agents").update({ archived_at: null }).eq("id", b.id!);
+        if (error) throw new Error(error.message);
+        limparCacheAgent();
+        return resp(req, { ok: true, acao: "voltou", nome: ag.name });
+      }
+      const conta = async (t: string, col: string) => {
+        const { count, error } = await db.from(t).select("id", { count: "exact", head: true }).eq(col, b.id!);
+        if (error) throw new Error(error.message);
+        return count ?? 0;
+      };
+      const n = (await Promise.all([
+        conta("conversations", "assigned_to"), conta("messages", "agent_id"),
+        conta("task_cards", "assignee"), conta("task_cards", "created_by"), conta("task_comments", "agent_id"),
+      ])).reduce((a, x) => a + x, 0);
+      if (n === 0) {
+        const { error } = await db.auth.admin.deleteUser(b.id!); // apaga também a linha de agents (cascade)
+        if (error) throw new Error(error.message);
+        limparCacheAgent();
+        return resp(req, { ok: true, acao: "excluido", nome: ag.name });
+      }
+      const { error } = await db.from("agents").update({ active: false, archived_at: new Date().toISOString() }).eq("id", b.id!);
+      if (error) throw new Error(error.message);
+      limparCacheAgent();
+      return resp(req, { ok: true, acao: "arquivado", nome: ag.name, registros: n });
     }
     if (b.acao === "criar") {
       // Cadastra um atendente novo pela central do sistema (mesma regra da tela Equipe).
