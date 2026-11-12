@@ -47,9 +47,9 @@ export async function POST(req: Request) {
   const cfg = await getSetting<{ para?: string; de?: string }>("aviso_dono", PADRAO).catch(() => PADRAO);
   const para = String(cfg?.para || PADRAO.para).replace(/\D/g, ""), de = String(cfg?.de || PADRAO.de).replace(/\D/g, "");
   const itens = (Array.isArray(lp.itens) ? lp.itens : []).slice(0, 6);
-  const linhas = itens.map((x: any) => `• ${corta(x.desc, 60)}${x.vn ? " (" + corta(x.vn, 30) + ")" : ""}${x.qtd ? " · " + Number(x.qtd).toLocaleString("pt-BR") + " un" : ""} · pediu *${brl(x.valor)}* (tabela ${brl(x.tabela)})`);
+  const linhas = itens.map((x: any) => x.tipo === "desc" ? `• ${corta(x.desc, 60)} · *${corta(x.txt, 90)}*` : `• ${corta(x.desc, 60)}${x.vn ? " (" + corta(x.vn, 30) + ")" : ""}${x.qtd ? " · " + Number(x.qtd).toLocaleString("pt-BR") + " un" : ""} · pediu *${brl(x.valor)}* (tabela ${brl(x.tabela)})`);
   const texto = [
-    `🔔 *Liberação de preço* · ${corta(lp.porNome || lp.por || "vendedora", 30)}`,
+    `🔔 *Liberação de ${itens.some((x: any) => x.tipo === "desc") ? (itens.some((x: any) => x.tipo !== "desc") ? "preço e desconto" : "desconto") : "preço"}* · ${corta(lp.porNome || lp.por || "vendedora", 30)}`,
     `${col === "pedidos" ? "Pedido" : "Proposta"} nº ${corta(d.numero, 12)} · ${corta(d.clienteNome, 50)}`,
     ...linhas,
     lp.motivo ? `Motivo: ${corta(lp.motivo, 200)}` : "",
