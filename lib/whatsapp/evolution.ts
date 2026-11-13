@@ -12,7 +12,54 @@ type EvolutionMessage = {
   audioMessage?: unknown;
   stickerMessage?: unknown;
   reactionMessage?: { key?: { id?: string }; text?: string };
+  locationMessage?: Local;
+  liveLocationMessage?: Local;
+  contactMessage?: Cartao;
+  contactsArrayMessage?: { displayName?: string; contacts?: Cartao[] };
+  pollCreationMessage?: Enquete;
+  pollCreationMessageV2?: Enquete;
+  pollCreationMessageV3?: Enquete;
+  eventMessage?: { name?: string; description?: string; startTime?: number | string; location?: { name?: string } };
+  buttonsResponseMessage?: { selectedDisplayText?: string };
+  listResponseMessage?: { title?: string };
+  templateButtonReplyMessage?: { selectedDisplayText?: string };
 };
+type Local = { degreesLatitude?: number; degreesLongitude?: number; name?: string; address?: string };
+type Cartao = { displayName?: string; vcard?: string };
+type Enquete = { name?: string; options?: { optionName?: string }[]; selectableOptionsCount?: number };
+
+/**
+ * Mensagens que não são texto nem arquivo (localização, cartão de contato, enquete, evento, resposta de botão)
+ * viram um texto legível, com o link do mapa ou o telefone, para aparecerem na conversa e a IA entender.
+ */
+export function textoEspecial(m: EvolutionMessage): string {
+  const loc = m.locationMessage ?? m.liveLocationMessage;
+  if (loc && loc.degreesLatitude != null && loc.degreesLongitude != null) {
+    const titulo = m.liveLocationMessage ? "📍 Localização em tempo real" : "📍 Localização";
+    const nome = [loc.name, loc.address].filter(Boolean).join(" · ");
+    return `${titulo}${nome ? `: ${nome}` : ""}\nhttps://maps.google.com/?q=${loc.degreesLatitude},${loc.degreesLongitude}`;
+  }
+  const cartoes = m.contactMessage ? [m.contactMessage] : (m.contactsArrayMessage?.contacts ?? []);
+  if (cartoes.length) {
+    return cartoes
+      .map((c) => {
+        const tels = [...(c.vcard ?? "").matchAll(/^(?:item\d+\.)?TEL[^:\n]*:(.+)$/gim)].map((t) => t[1].trim()).filter(Boolean);
+        return `👤 Contato: ${c.displayName || "sem nome"}${tels.length ? ` · ${tels.join(" · ")}` : ""}`;
+      })
+      .join("\n");
+  }
+  const poll = m.pollCreationMessage ?? m.pollCreationMessageV2 ?? m.pollCreationMessageV3;
+  if (poll?.name) {
+    const ops = (poll.options ?? []).map((o) => `• ${o.optionName ?? ""}`).join("\n");
+    return `📊 Enquete: ${poll.name}${ops ? `\n${ops}` : ""}`;
+  }
+  if (m.eventMessage?.name) {
+    const t = Number(m.eventMessage.startTime);
+    const quando = t ? new Date((t > 1e12 ? t : t * 1000)).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "";
+    return [`📅 Evento: ${m.eventMessage.name}`, quando, m.eventMessage.location?.name, m.eventMessage.description].filter(Boolean).join("\n");
+  }
+  return m.buttonsResponseMessage?.selectedDisplayText ?? m.listResponseMessage?.title ?? m.templateButtonReplyMessage?.selectedDisplayText ?? "";
+}
 
 /** Mensagem antiga (histórico) já convertida, nossa ou do cliente. */
 export type HistMsg = {
@@ -138,7 +185,7 @@ export class EvolutionProvider implements WhatsAppProvider {
   async connect(webhookUrl: string, phone?: string): Promise<{ state: string; qr?: string; pairingCode?: string }> {
     // MESSAGES_SET: o WhatsApp manda as conversas antigas logo depois de conectar (histórico).
     // CONNECTION_UPDATE: avisa o sistema na hora em que o celular termina de conectar.
-    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: ["MESSAGES_UPSERT", "MESSAGES_SET", "CONNECTION_UPDATE"] };
+    const webhook = { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: EVENTOS_WEBHOOK };
     let state = await this.connectionState();
     if (state === "missing") {
       const created = await this.call<{ qrcode?: { base64?: string } }>("POST", "/instance/create", {
@@ -161,6 +208,68 @@ export class EvolutionProvider implements WhatsAppProvider {
     const { status, data } = await this.call<{ base64?: string; pairingCode?: string | null }>("GET", `/instance/connect/${this.instance}${q}`);
     if (status >= 400) throw new Error(`Evolution API ${status}: ${JSON.stringify(data)}`);
     return { state, qr: data.base64, pairingCode: data.pairingCode ?? undefined };
+  }
+
+  /**
+   * Números que já estavam conectados antes de existir um evento novo (ex.: MESSAGES_UPDATE, dos tracinhos):
+   * acrescenta o que falta no webhook, mantendo o mesmo endereço. Não reinicia nem desconecta o número.
+   */
+  async garantirEventos(): Promise<boolean> {
+    const atual = await this.call<{ enabled?: boolean; url?: string; events?: string[]; webhookByEvents?: boolean; webhookBase64?: boolean }>(
+      "GET",
+      `/webhook/find/${this.instance}`,
+      undefined,
+      15_000,
+    );
+    const w = atual.data;
+    if (atual.status >= 400 || !w || typeof w !== "object" || !w.url || w.enabled === false) return false;
+    const tem = new Set(w.events ?? []);
+    if (EVENTOS_WEBHOOK.every((e) => tem.has(e))) return false;
+    const events = [...new Set([...(w.events ?? []), ...EVENTOS_WEBHOOK])];
+    const set = await this.call("POST", `/webhook/set/${this.instance}`, {
+      webhook: { enabled: true, url: w.url, byEvents: !!w.webhookByEvents, base64: !!w.webhookBase64, events },
+    });
+    if (set.status >= 400) throw new Error(`Evolution API ${set.status}: ${JSON.stringify(set.data)}`);
+    return true;
+  }
+
+  /** Avisa o WhatsApp do cliente que estamos digitando (aparece "digitando…" lá por alguns segundos). */
+  async digitando(phone: string) {
+    await this.call("POST", `/chat/sendPresence/${this.instance}`, { number: phone, presence: "composing", delay: 4000 }, 10_000);
+  }
+
+  /** Enquete (o cliente vota tocando nas opções). */
+  async sendPoll(phone: string, pergunta: string, opcoes: string[], variasRespostas: boolean) {
+    const data = await this.enviar(`/message/sendPoll/${this.instance}`, {
+      number: phone,
+      name: pergunta,
+      selectableCount: variasRespostas ? opcoes.length : 1,
+      values: opcoes,
+    }, 30_000);
+    return { waMessageId: data.key?.id };
+  }
+
+  /**
+   * Tracinhos (messages.update): a mensagem que enviamos foi entregue ou lida.
+   * A Evolution v2 manda { keyId, fromMe, status: "DELIVERY_ACK" | "READ" | ... }; versões antigas mandam
+   * uma lista de { key: { id, fromMe }, update: { status: 3 } }.
+   */
+  static parseStatusUpdate(payload: unknown): { id: string; entrega: "enviada" | "entregue" | "lida" }[] {
+    const body = payload as { event?: string; data?: unknown };
+    if (body?.event !== "messages.update" || !body.data) return [];
+    type Item = { keyId?: string; messageId?: string; fromMe?: boolean; status?: string | number; key?: { id?: string; fromMe?: boolean }; update?: { status?: string | number } };
+    const itens = (Array.isArray(body.data) ? body.data : [body.data]) as Item[];
+    const out: { id: string; entrega: "enviada" | "entregue" | "lida" }[] = [];
+    for (const it of itens) {
+      const fromMe = it.fromMe ?? it.key?.fromMe;
+      const id = it.key?.id ?? it.keyId;
+      const st = it.status ?? it.update?.status;
+      if (fromMe === false || !id || st == null) continue;
+      const nome = typeof st === "number" ? ["ERROR", "PENDING", "SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED"][st] : String(st).toUpperCase();
+      const entrega = nome === "READ" || nome === "PLAYED" ? "lida" : nome === "DELIVERY_ACK" ? "entregue" : nome === "SERVER_ACK" ? "enviada" : null;
+      if (entrega) out.push({ id, entrega });
+    }
+    return out;
   }
 
   /**
@@ -214,6 +323,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       message.videoMessage?.caption ??
       message.documentMessage?.caption ??
       "";
+    if (!text) text = textoEspecial(message);
     let mediaType: IncomingMessage["mediaType"];
     if (message.imageMessage) mediaType = "image";
     else if (message.audioMessage) mediaType = "audio";
@@ -297,6 +407,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       message.videoMessage?.caption ??
       message.documentMessage?.caption ??
       "";
+    if (!text) text = textoEspecial(message);
     let mediaType: string | undefined;
     if (message.imageMessage) mediaType = "image";
     else if (message.audioMessage) mediaType = "audio";
@@ -467,6 +578,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { data: Buffer.from(data.base64, "base64"), mimeType: data.mimetype?.split(";")[0] || "application/octet-stream" };
   }
 }
+
+/**
+ * Eventos que o webhook de cada número recebe.
+ * MESSAGES_SET: conversas antigas logo depois de conectar. CONNECTION_UPDATE: celular terminou de conectar.
+ * MESSAGES_UPDATE: tracinhos (entregue / lida) das mensagens enviadas.
+ */
+const EVENTOS_WEBHOOK = ["MESSAGES_UPSERT", "MESSAGES_SET", "CONNECTION_UPDATE", "MESSAGES_UPDATE"];
 
 /** Campo "quoted" da Evolution: a resposta sai com a mensagem citada em cima, como no WhatsApp. */
 function citado(c?: Citacao) {

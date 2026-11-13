@@ -87,3 +87,19 @@ async function reiniciarEvolution() {
   console.warn("Vigia: número travado, reiniciando a Evolution", res?.status);
   await avisarMaster("vigia", "Um número estava travado e o servidor do WhatsApp foi reiniciado sozinho. Em 3 minutos deve voltar.");
 }
+
+/**
+ * Números conectados antes de o sistema pedir um evento novo no webhook (ex.: tracinhos de entregue/lida):
+ * acrescenta o evento que falta, mantendo o mesmo endereço. Roda ao subir o servidor; não reinicia nada.
+ */
+export async function garantirEventosWebhook() {
+  if (process.env.WHATSAPP_PROVIDER === "meta") return;
+  const conns = (await listConnections()).filter((c) => (c.channel ?? "whatsapp") === "whatsapp");
+  for (const c of conns) {
+    try {
+      if (await new EvolutionProvider(c.instance).garantirEventos()) console.log("webhook: eventos novos ligados no número", c.name);
+    } catch (err) {
+      console.error("webhook: não consegui ligar os eventos novos", c.name, err);
+    }
+  }
+}

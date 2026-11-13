@@ -47,6 +47,10 @@ export interface WhatsAppProvider {
   editText?(phone: string, msg: Omit<Citacao, "text">, text: string): Promise<void>;
   /** Apaga para todos uma mensagem que nós enviamos (como o "Apagar para todos" do WhatsApp). */
   deleteForEveryone?(msg: Omit<Citacao, "text">): Promise<void>;
+  /** Enquete para o cliente votar (só na conexão por QR Code). */
+  sendPoll?(phone: string, pergunta: string, opcoes: string[], variasRespostas: boolean): Promise<{ waMessageId?: string }>;
+  /** Mostra "digitando…" no WhatsApp do cliente por alguns segundos. */
+  digitando?(phone: string): Promise<void>;
   /** Baixa o arquivo de uma mensagem com mídia. */
   downloadMedia(msg: IncomingMessage): Promise<MediaFile | null>;
   /** Nome de um grupo (só na conexão por QR Code). */

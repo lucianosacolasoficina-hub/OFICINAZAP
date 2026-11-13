@@ -5,6 +5,7 @@ import { EvolutionProvider } from "@/lib/whatsapp/evolution";
 import { connectionByInstance, religarConversas, updateConnection } from "@/lib/connections";
 import { importarMensagens, naFilaDoHistorico, registrarEnviada } from "@/lib/historico";
 import { completarLid } from "@/lib/recuperar";
+import { aplicarEntrega } from "@/lib/db";
 
 export const maxDuration = 60;
 
@@ -52,6 +53,26 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true });
   }
+
+  // Tracinhos: mensagem nossa entregue ou lida pelo cliente.
+  const entregas = EvolutionProvider.parseStatusUpdate(payload);
+  if (entregas.length) {
+    after(async () => {
+      for (const e of entregas) {
+        try {
+          // O aviso pode chegar antes de a mensagem ser gravada (logo depois do envio): tenta de novo em instantes.
+          if (!(await aplicarEntrega(e.id, e.entrega))) {
+            await new Promise((r) => setTimeout(r, 5000));
+            await aplicarEntrega(e.id, e.entrega);
+          }
+        } catch (err) {
+          console.error("Erro ao marcar tracinho", e.id, err);
+        }
+      }
+    });
+    return NextResponse.json({ ok: true, entregas: entregas.length });
+  }
+  if ((payload as { event?: string })?.event === "messages.update") return NextResponse.json({ ok: true });
 
   // Contato com número oculto (@lid) e sem o número junto: completa com o número já conhecido.
   const up = payload as { event?: string; data?: { key?: { remoteJid?: string; remoteJidAlt?: string; senderPn?: string }; pushName?: string | null } };

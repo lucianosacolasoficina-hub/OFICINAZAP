@@ -27,6 +27,8 @@ export type Conversation = {
   waiting_since: string | null;
   /** A última mensagem foi nossa (OficinaZap ou celular)? */
   last_from_me?: boolean | null;
+  /** Fixada no topo da lista (migração 019). */
+  fixada_em?: string | null;
   created_at: string;
 };
 
@@ -50,6 +52,9 @@ export type Message = {
   favorita?: boolean;
   /** Texto editado depois de enviado (migração 014). */
   editada?: boolean;
+  /** Tracinhos de mensagem enviada: enviada ✓, entregue ✓✓, lida ✓✓ azul (migração 019). */
+  entrega?: "enviada" | "entregue" | "lida" | null;
+  entrega_em?: string | null;
   created_at: string;
 };
 
@@ -117,9 +122,11 @@ export async function activeConversation(
 export async function addMessage(
   conversationId: string,
   msg: Pick<Message, "direction" | "sender" | "body"> &
-    Partial<Pick<Message, "agent_id" | "media_type" | "wa_message_id" | "reply_to">>,
+    Partial<Pick<Message, "agent_id" | "media_type" | "wa_message_id" | "reply_to" | "entrega">>,
 ): Promise<Message | null> {
   const db = supabaseAdmin();
+  // Saiu pelo WhatsApp (tem id lá): já começa com um tracinho (enviada).
+  if (msg.direction === "out" && msg.wa_message_id && msg.sender !== "system") msg = { ...msg, entrega: "enviada" };
   let res = await db.from("messages").insert({ conversation_id: conversationId, ...msg }).select().single();
   // Banco ainda sem a coluna reply_to (migração 013 não rodada): grava sem a ligação com a mensagem citada.
   if (res.error && "reply_to" in msg && /reply_to/.test(res.error.message)) {
@@ -152,6 +159,29 @@ export async function addMessage(
       .eq("id", conversationId),
   );
   return saved;
+}
+
+const ORDEM_ENTREGA = { enviada: 1, entregue: 2, lida: 3 } as const;
+
+/**
+ * Tracinho novo de uma mensagem nossa (achada pelo id do WhatsApp). Só avança (lida não volta a entregue).
+ * Devolve false quando a mensagem ainda não está no banco (o aviso chegou antes de ela ser gravada).
+ */
+export async function aplicarEntrega(waMessageId: string, entrega: keyof typeof ORDEM_ENTREGA): Promise<boolean> {
+  const db = supabaseAdmin();
+  const menores = (Object.keys(ORDEM_ENTREGA) as (keyof typeof ORDEM_ENTREGA)[]).filter((k) => ORDEM_ENTREGA[k] < ORDEM_ENTREGA[entrega]);
+  const filtro = ["entrega.is.null", ...(menores.length ? [`entrega.in.(${menores.join(",")})`] : [])].join(",");
+  const { data, error } = await db
+    .from("messages")
+    .update({ entrega, entrega_em: new Date().toISOString() })
+    .eq("wa_message_id", waMessageId)
+    .eq("direction", "out")
+    .or(filtro)
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (data?.length) return true;
+  const { data: existe } = await db.from("messages").select("id").eq("wa_message_id", waMessageId).limit(1).maybeSingle();
+  return !!existe;
 }
 
 /** Guarda a reação (emoji) de um lado numa mensagem, achada pelo id do WhatsApp. Emoji vazio tira a reação. */

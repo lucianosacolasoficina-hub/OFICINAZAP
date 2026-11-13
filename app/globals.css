@@ -1124,3 +1124,31 @@ button.cc-item.cc-nc-acao { align-items: center; }
 .cc-nc-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
 .cc-nc-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .cc-nova-rodape { color: var(--brand); }
+
+/* Recursos do WhatsApp Business: tracinhos, fixadas, agendar, Pix, enquete */
+.zx-tique { letter-spacing: -3px; margin-left: 2px; color: #8696a0; font-weight: 600; }
+.zx-tique.lida { color: #53bdeb; }
+.ib-pin { font-size: 12px; margin-right: 2px; }
+.zx-extra { gap: 8px; overflow-y: auto; }
+.zx-extra textarea, .zx-extra input:not([type="checkbox"]) { width: 100%; }
+.zx-mais { width: 300px; }
+.zx-mais > button[role="menuitem"] { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 8px 10px; border: 1px solid #eef2f7; border-radius: 10px; background: #fff; cursor: pointer; font-weight: 600; }
+.zx-mais > button[role="menuitem"]:hover { background: #f1f5f9; }
+.zx-mais small { font-weight: 400; color: #64748b; font-size: 12px; }
+.zx-atalhos { display: flex; flex-wrap: wrap; gap: 6px; }
+.zx-atalhos button { border: 1px solid #e2e8f0; background: #fff; border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.zx-atalhos button.on { background: #dcfce7; border-color: #22c55e; }
+.zx-campo { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #475569; }
+.zx-op { display: flex; gap: 6px; align-items: center; }
+.zx-op button { border: none; background: none; font-size: 18px; cursor: pointer; }
+.zx-erro { color: var(--danger, #dc2626); }
+.zx-agendadas { position: absolute; right: 10px; bottom: calc(100% + 6px); z-index: 20; max-width: min(460px, calc(100% - 20px)); align-items: flex-end; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.zx-ag-topo { align-self: flex-start; border: 1px solid #fde68a; background: #fffbeb; border-radius: 999px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.zx-ag-it { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 5px 8px; border: 1px solid #eef2f7; border-radius: 8px; background: #fff; }
+.zx-ag-it.erro { border-color: #fecaca; background: #fef2f2; }
+.zx-ag-it button { border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; padding: 2px 8px; cursor: pointer; flex: none; }
+.bubble .meta-sp.tique { width: 60px; }
+.bubble .meta-sp.wide.tique { width: 96px; }
+.bubble .meta-sp.mais.tique { width: 108px; }
+.zx-pix-prev { white-space: pre-wrap; font-size: 13px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 8px; max-height: 180px; overflow-y: auto; }
+.zx-pix-cod { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; }

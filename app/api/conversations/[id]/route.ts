@@ -38,7 +38,17 @@ const LABELS: Record<ConversationStatus, string> = {
 
 export const PATCH = route<IdCtx>(async (req, { params }, userId) => {
   const { id } = await params;
-  const body = (await req.json()) as { status?: ConversationStatus; department_id?: string | null; assign_to?: string | null };
+  const body = (await req.json()) as { status?: ConversationStatus; department_id?: string | null; assign_to?: string | null; fixar?: boolean };
+
+  // Fixar no topo da lista (📌), como no WhatsApp. Vale para toda a equipe; no máximo 10 fixadas.
+  if (typeof body.fixar === "boolean") {
+    if (body.fixar) {
+      const { count } = await supabaseAdmin().from("conversations").select("id", { count: "exact", head: true }).not("fixada_em", "is", null);
+      if ((count ?? 0) >= 10) throw new HttpError(400, "já há 10 conversas fixadas. Desafixe uma antes.");
+    }
+    await updateConversation(id, { fixada_em: body.fixar ? new Date().toISOString() : null });
+    return;
+  }
 
   // Direcionar a conversa para um atendente (arrastar para o nome dele). Só quem tem acesso total.
   if (body.assign_to !== undefined) {

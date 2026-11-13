@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { TravaCard } from "@/components/TravaEnvio";
+import { AusenciaCard, PixCard, type AusenciaCfg, type PixCfg } from "@/components/AusenciaPix";
 
 function WhatsAppCard() {
   return (
@@ -85,7 +86,7 @@ function BlingCard() {
 }
 
 type Alertas = { espera_min: number; retomar_dias: number };
-type Settings = { bot_enabled: boolean; knowledge_base: string; alertas: Alertas };
+type Settings = { bot_enabled: boolean; knowledge_base: string; alertas: Alertas; ausencia: AusenciaCfg; pix: PixCfg };
 type QuickReply = { id: string; shortcut: string; body: string };
 
 export default function SettingsPage() {
@@ -149,6 +150,10 @@ export default function SettingsPage() {
           </span>
         </label>
       </div>
+
+      <AusenciaCard inicial={settings.ausencia} onSave={(ausencia) => save({ ausencia })} />
+
+      <PixCard inicial={settings.pix} onSave={(pix) => save({ pix })} />
 
       <div className="card">
         <strong>Alertas e retomada de orçamentos</strong>

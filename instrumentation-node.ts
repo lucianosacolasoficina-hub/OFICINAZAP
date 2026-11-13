@@ -6,7 +6,8 @@ import { preencherFotos } from "./lib/fotos";
 import { retomarHistoricos } from "./lib/historico";
 import { baixarMidiasPendentes } from "./lib/midias";
 import { recuperarPerdidas } from "./lib/recuperar";
-import { vigiarNumeros } from "./lib/vigia";
+import { garantirEventosWebhook, vigiarNumeros } from "./lib/vigia";
+import { enviarAgendadas } from "./lib/agendadas";
 
 // Nenhuma chamada externa (Supabase, Google, Microsoft, Instagram, Bling, sistema de gestão) pode ficar
 // pendurada para sempre: sem prazo, uma resposta que nunca vem prende a tarefa automática que a fez
@@ -60,6 +61,16 @@ setInterval(() => {
 setInterval(() => {
   vigiarNumeros().catch((e) => console.error("vigia dos números", e));
 }, 5 * 60_000);
+
+// Webhook dos números com os eventos novos (tracinhos de entregue/lida), 2 minutos depois de subir.
+setTimeout(() => {
+  garantirEventosWebhook().catch((e) => console.error("eventos do webhook", e));
+}, 2 * 60_000);
+
+// Mensagens agendadas: confere a cada 30 segundos se alguma chegou na hora de sair.
+setInterval(() => {
+  enviarAgendadas().catch((e) => console.error("mensagens agendadas", e));
+}, 30_000);
 
 // Diário de saúde: a cada 30 minutos anota no log quanta memória o servidor está usando,
 // para enxergar cedo se algo voltar a acumular.
