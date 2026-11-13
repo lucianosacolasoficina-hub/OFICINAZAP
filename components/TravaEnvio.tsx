@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { useMe } from "@/lib/useMe";
 
-type Limites = { intervalo_seg: number; massa_contatos: number; massa_min: number; robo_10min: number };
-type Numero = { id: string; nome: string; instance: string; phone: string | null; minuto: number; hora: number; dia: number; fila: number };
+type Limites = { intervalo_seg: number; massa_contatos: number; massa_min: number; robo_10min: number; frios_hora: number; frios_dia: number };
+type Numero = { id: string; nome: string; instance: string; phone: string | null; minuto: number; hora: number; dia: number; fila: number; frios?: { hora: number; dia: number } };
 type Aviso = { quando: string; instance: string; nome: string; motivo: string; lido?: boolean };
 type Trava = { limites: Limites; numeros: Numero[]; avisos: Aviso[] };
 
@@ -44,6 +44,8 @@ const CAMPOS: { k: keyof Limites; label: string; min: number; max: number }[] = 
   { k: "massa_min", label: "...dentro de quantos minutos", min: 1, max: 1440 },
   { k: "intervalo_seg", label: "Intervalo entre mensagens (segundos)", min: 0, max: 30 },
   { k: "robo_10min", label: "Respostas da IA por conversa em 10 min", min: 1, max: 30 },
+  { k: "frios_hora", label: "Primeiros contatos (número que nunca falou) por hora, por número", min: 1, max: 100 },
+  { k: "frios_dia", label: "Primeiros contatos por dia, por número", min: 1, max: 300 },
 ];
 
 /** Quadro em Configurações: ajustes da trava e quanto cada número enviou. */
@@ -73,12 +75,14 @@ export function TravaCard() {
         Conversa normal com cada cliente é livre, sem limite. O que fica barrado é envio em massa: a mesma mensagem para muitos
         contatos diferentes em pouco tempo (textos curtos como "bom dia" e "ok" não contam) ou mais de 10 mensagens tentando sair
         ao mesmo tempo pelo mesmo número. Também não sai a mesma mensagem duas vezes seguidas para o mesmo contato, a IA nunca
-        responde outro número da empresa e para sozinha se ficar respondendo demais na mesma conversa. Quando algo é barrado, o
+        responde outro número da empresa e para sozinha se ficar respondendo demais na mesma conversa. Começar conversa com um número
+        que nunca falou com a empresa (primeiro contato) tem limite por hora e por dia em cada número, porque puxar muitos números
+        novos é o que mais leva a bloqueio. Quando algo é barrado, o
         master recebe um aviso no topo da tela. Mensagens mandadas direto pelo celular não passam por aqui.
       </p>
       <table>
         <thead>
-          <tr><th>Número</th><th>Enviadas no último minuto</th><th>Na última hora</th><th>Em 24 horas</th><th>Na fila agora</th></tr>
+          <tr><th>Número</th><th>Enviadas no último minuto</th><th>Na última hora</th><th>Em 24 horas</th><th>Na fila agora</th><th>Primeiros contatos (hora / 24 h)</th></tr>
         </thead>
         <tbody>
           {t.numeros.map((n) => (
@@ -88,6 +92,7 @@ export function TravaCard() {
               <td>{n.hora}</td>
               <td>{n.dia}</td>
               <td>{n.fila}</td>
+              <td>{n.frios ? `${n.frios.hora} / ${n.frios.dia}` : "–"}</td>
             </tr>
           ))}
         </tbody>
