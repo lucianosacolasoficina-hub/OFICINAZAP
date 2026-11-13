@@ -51,8 +51,11 @@ export const POST = route(async (req, _ctx, userId) => {
 
   const contact = await upsertContact(phone, body.name?.trim() || undefined);
   const conversation = await activeConversation(contact.id, false, connection);
-  if (conversation.status !== "open" || conversation.assigned_to !== userId) {
-    await updateConversation(conversation.id, { status: "open", assigned_to: userId });
+  // Conversa que já está com outro atendente só abre (não é tirada dele); senão fica com quem iniciou.
+  if (!conversation.assigned_to || conversation.assigned_to === userId) {
+    if (conversation.status !== "open" || conversation.assigned_to !== userId) {
+      await updateConversation(conversation.id, { status: "open", assigned_to: userId });
+    }
   }
   return { id: conversation.id };
 });

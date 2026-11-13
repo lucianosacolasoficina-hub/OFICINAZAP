@@ -1105,3 +1105,22 @@ input.segredo { -webkit-text-security: disc; font-family: monospace; }
 .hp-col-st.ok { background: #dcefe3; color: #2d7a4f; }
 .hp-col-st.warn { background: #f8e8cf; color: #b4731a; }
 .hp-col-at { font-size: 11px !important; }
+
+/* Central: "Nova conversa" dentro da caixa e contatos na busca, como no WhatsApp */
+.cc-novabtn { margin-left: auto; font-size: 12.5px; padding: 4px 11px; border-radius: 99px; white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 5px; }
+.cc-novabtn + .cc-max { margin-left: 0; }
+.cc-cols.grade .cc-novabtn { font-size: 11.5px; padding: 3px 9px; }
+.cc-sec { margin: 0; padding: 8px 12px 4px; font-size: 12px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: .03em; }
+.cc-nc { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.cc-nc-h { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--brand); color: #fff; }
+.cc-nc-h b { display: block; font-size: 15px; }
+.cc-nc-h small { display: block; font-size: 12px; opacity: .85; }
+.cc-nc-voltar { background: transparent; border: 0; color: #fff; font-size: 20px; padding: 0 6px; line-height: 1; }
+.cc-nc-busca { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; }
+.cc-nc-busca .cc-q { flex: 1; }
+button.cc-item.cc-nc-acao { align-items: center; }
+.cc-nc-acao b { font-size: 13.5px; }
+.cc-nc-ic { width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--brand); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.cc-nc-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
+.cc-nc-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.cc-nova-rodape { color: var(--brand); }

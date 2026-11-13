@@ -49,6 +49,157 @@ function semRepetidas(rows: Row[]) {
   });
 }
 
+type Contato = { id: string; name: string | null; phone: string };
+
+/** Dígitos de um número digitado (com o 55 na frente quando veio só DDD + número). */
+function numeroDigitado(q: string) {
+  if (/[a-zà-ú]/i.test(q)) return "";
+  const d = q.replace(/\D/g, "");
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d.length >= 12 && d.length <= 13 ? d : "";
+}
+
+/** Abre a conversa com o contato por este número (se ainda não existe, cria). */
+async function conversarCom(connId: string, phone: string, name?: string) {
+  const { id } = await api<{ id: string }>("/api/conversations", {
+    method: "POST",
+    body: JSON.stringify({ phone, name: name || undefined, connection_id: connId }),
+  });
+  return id;
+}
+
+function ItemContato({ c, onClick, dica = "Contato" }: { c: Contato; onClick: () => void; dica?: string }) {
+  const nome = c.name || formatPhone(c.phone);
+  return (
+    <button className="cc-item cc-contato" onClick={onClick} title={`Abrir conversa com ${nome}`}>
+      <FotoContato id={c.id} name={nome} phone={c.phone} size={40} />
+      <span className="cc-body">
+        <span className="cc-l1"><b>{nome}</b></span>
+        <span className="cc-prev">{c.name ? formatPhone(c.phone) : dica}</span>
+      </span>
+    </button>
+  );
+}
+
+// Painel "Nova conversa" dentro da caixa, como no WhatsApp: busca nos contatos salvos,
+// número digitado na hora ou cadastro de um contato novo. A conversa sai por este número.
+function NovaConversa({ conn, onFechar, onAbrir }: { conn: Conn; onFechar: () => void; onAbrir: (id: string) => void }) {
+  const [q, setQ] = useState("");
+  const [lista, setLista] = useState<Contato[] | null>(null);
+  const [fim, setFim] = useState(false);
+  const [novo, setNovo] = useState<{ name: string; phone: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const LIM = 60;
+
+  const ler = useCallback(
+    (offset: number) => {
+      const p = new URLSearchParams({ whats: "1", ordem: "nome", limit: String(LIM), offset: String(offset) });
+      if (q.trim()) p.set("q", q.trim());
+      return api<Contato[]>(`/api/contacts?${p}`);
+    },
+    [q],
+  );
+  useEffect(() => {
+    let vivo = true;
+    setLista(null);
+    const t = setTimeout(() => {
+      ler(0)
+        .then((r) => {
+          if (!vivo) return;
+          setLista(r);
+          setFim(r.length < LIM);
+        })
+        .catch((e) => vivo && setErro(e.message));
+    }, q ? 250 : 0);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [ler, q]);
+  const mais = async () => {
+    if (!lista || fim) return;
+    const r = await ler(lista.length);
+    setLista([...lista, ...r]);
+    setFim(r.length < LIM);
+  };
+
+  const abrir = async (phone: string, name?: string) => {
+    setBusy(true);
+    setErro("");
+    try {
+      onAbrir(await conversarCom(conn.id, phone, name));
+      onFechar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "não deu para abrir a conversa");
+      setBusy(false);
+    }
+  };
+
+  const num = numeroDigitado(q);
+  const numJaSalvo = !!num && !!lista?.some((c) => c.phone === num);
+  const letras = /[a-zà-ú]/i.test(q) ? q.trim() : "";
+
+  return (
+    <div className="cc-nc" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), novo ? setNovo(null) : onFechar())}>
+      <header className="cc-nc-h">
+        <button className="cc-nc-voltar" onClick={() => (novo ? setNovo(null) : onFechar())} aria-label="Voltar" title="Voltar (Esc)">←</button>
+        <div>
+          <b>{novo ? "Novo contato" : "Nova conversa"}</b>
+          <small>pelo número {conn.name}{conn.phone ? ` · ${formatPhone(conn.phone)}` : ""}</small>
+        </div>
+      </header>
+      {!conn.connected_at && <p className="cc-alerta" style={{ padding: "6px 12px" }}>Este número está desconectado: a mensagem só sai quando ele voltar.</p>}
+      {erro && <p className="cc-alerta" style={{ padding: "6px 12px" }}>{erro}</p>}
+      {novo ? (
+        <form
+          className="cc-nc-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            abrir(novo.phone, novo.name.trim());
+          }}
+        >
+          <label>
+            Nome
+            <input value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} placeholder="Ex.: Maria da Loja Bela" autoFocus={!novo.name} />
+          </label>
+          <label>
+            WhatsApp (com DDD)
+            <input value={novo.phone} onChange={(e) => setNovo({ ...novo, phone: e.target.value })} placeholder="(77) 99999-8888" inputMode="tel" required autoFocus={!!novo.name} />
+          </label>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>O contato fica salvo no OficinaZap (e no Google Contatos) e a conversa abre aqui para você mandar a primeira mensagem. Se o número já existir, abre a conversa dele.</p>
+          <button className="primary" disabled={busy || !novo.phone.trim()}>{busy ? "Abrindo…" : "Salvar e abrir conversa"}</button>
+        </form>
+      ) : (
+        <>
+          <div className="cc-nc-busca">
+            <input className="cc-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar contato por nome ou número…" autoFocus />
+          </div>
+          <div className="cc-list">
+            <button className="cc-item cc-nc-acao" onClick={() => setNovo({ name: letras, phone: num ? formatPhone(num) : q.replace(/[^\d()+\s-]/g, "").trim() })} disabled={busy}>
+              <span className="cc-nc-ic" aria-hidden="true">👤＋</span>
+              <span className="cc-body"><b>Novo contato</b><span className="cc-prev">Cadastrar e já começar a conversa</span></span>
+            </button>
+            {num && !numJaSalvo && (
+              <button className="cc-item cc-nc-acao" onClick={() => abrir(num)} disabled={busy}>
+                <span className="cc-nc-ic" aria-hidden="true">💬</span>
+                <span className="cc-body"><b>Conversar com {formatPhone(num)}</b><span className="cc-prev">Número fora dos contatos: abre a conversa sem salvar nome</span></span>
+              </button>
+            )}
+            <p className="cc-sec">Contatos{q.trim() ? " encontrados" : ""}</p>
+            {lista === null && <p className="muted cc-vazio">Carregando…</p>}
+            {lista?.length === 0 && <p className="muted cc-vazio">Nenhum contato com “{q.trim()}”.</p>}
+            {lista?.map((c) => <ItemContato key={c.id} c={c} onClick={() => !busy && abrir(c.phone)} />)}
+            {lista && lista.length > 0 && !fim && (
+              <button className="cc-carregar" onClick={() => mais().catch(() => {})}>Mostrar mais contatos</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false, onMax }: { conn: Conn; stats?: Stats; onAbrir: (id: string) => void; aberta: string | null; lateMin?: number; max?: boolean; onMax?: () => void }) {
   const [filtro, setFiltro] = useState<string>(() => {
     try {
@@ -61,6 +212,34 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
   const [fim, setFim] = useState(false);
   const [maisCarregando, setMaisCarregando] = useState(false);
   const [q, setQ] = useState("");
+  const [nova, setNova] = useState(false);
+  // Buscando: também mostra os contatos salvos que ainda não têm conversa nesta caixa (como no WhatsApp).
+  const [achados, setAchados] = useState<Contato[]>([]);
+  const [erroAbrir, setErroAbrir] = useState("");
+  useEffect(() => {
+    const t = q.trim();
+    setAchados([]);
+    setErroAbrir("");
+    if (t.length < 2) return;
+    let vivo = true;
+    const id = setTimeout(() => {
+      api<Contato[]>(`/api/contacts?${new URLSearchParams({ whats: "1", ordem: "nome", limit: "15", q: t })}`)
+        .then((r) => vivo && setAchados(r))
+        .catch(() => {});
+    }, 300);
+    return () => {
+      vivo = false;
+      clearTimeout(id);
+    };
+  }, [q]);
+  const abrirContato = async (phone: string) => {
+    setErroAbrir("");
+    try {
+      onAbrir(await conversarCom(conn.id, phone));
+    } catch (e) {
+      setErroAbrir(e instanceof Error ? e.message : "não deu para abrir a conversa");
+    }
+  };
   // Tudo que já veio do servidor (com repetidas), para saber de onde continuar ao rolar.
   const bruto = useRef<Row[]>([]);
   const chave = `${filtro}|${conn.id}|${q.trim()}`;
@@ -154,6 +333,18 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
     robo: stats?.robo,
   };
   const noMais = MAIS.some((m) => m.key === filtro);
+  const buscando = q.trim().length >= 2;
+  const naLista = new Set((lista ?? []).map((c) => c.contact.id));
+  const contatosSemConversa = achados.filter((c) => !naLista.has(c.id));
+  const num = numeroDigitado(q);
+  const numConhecido = !!num && ((lista ?? []).some((c) => c.contact.phone === num) || achados.some((c) => c.phone === num));
+  if (nova) {
+    return (
+      <section className={`cc-col${online ? "" : " off"}${max ? " max" : ""}`}>
+        <NovaConversa conn={conn} onFechar={() => setNova(false)} onAbrir={onAbrir} />
+      </section>
+    );
+  }
   return (
     <section className={`cc-col${online ? "" : " off"}${max ? " max" : ""}`}>
       <header className="cc-h" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,input,select")) onMax?.(); }}>
@@ -163,6 +354,9 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
             <b>{conn.name}</b>
             <small>{conn.phone ? formatPhone(conn.phone) : "sem número"}</small>
           </div>
+          <button className="primary cc-novabtn" onClick={() => setNova(true)} title="Começar uma conversa nova por este número (buscar contato, digitar número ou cadastrar)">
+            <span aria-hidden="true">✎</span> Nova conversa
+          </button>
           {onMax && (
             <button className="cc-max" onClick={onMax} title={max ? "Voltar para todas as caixas (Esc)" : "Abrir esta caixa na tela toda"} aria-label={max ? "Reduzir" : "Expandir"}>
               {max ? "⤡" : "⤢"}
@@ -187,11 +381,12 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
             ))}
           </select>
         </div>
-        <input className="cc-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome, número ou mensagem…" />
+        <input className="cc-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa ou contato (nome, número ou mensagem)…" />
       </header>
       <div className="cc-list" onScroll={rolar}>
         {lista === null && <p className="muted cc-vazio">Carregando…</p>}
-        {lista?.length === 0 && <p className="muted cc-vazio">Nenhuma conversa aqui.</p>}
+        {buscando && lista !== null && <p className="cc-sec">Conversas</p>}
+        {lista?.length === 0 && <p className="muted cc-vazio">{buscando ? `Nenhuma conversa com “${q.trim()}” neste filtro.` : "Nenhuma conversa aqui."}</p>}
         {lista?.map((c) => {
           const nome = c.contact.name || (c.contact.is_group ? "Grupo" : formatPhone(c.contact.phone));
           const espera = c.waiting_since && c.status !== "closed" && !c.contact.is_group ? c.waiting_since : null;
@@ -220,6 +415,24 @@ function Coluna({ conn, stats, onAbrir, aberta, lateMin = LATE_MIN, max = false,
           <button className="cc-carregar" onClick={() => carregarMais().catch(() => {})} disabled={maisCarregando}>
             {maisCarregando ? "Carregando…" : "Carregar mais conversas"}
           </button>
+        )}
+        {buscando && (contatosSemConversa.length > 0 || (num && !numConhecido)) && (
+          <>
+            <p className="cc-sec">Contatos</p>
+            {erroAbrir && <p className="cc-alerta" style={{ padding: "4px 12px" }}>{erroAbrir}</p>}
+            {num && !numConhecido && (
+              <button className="cc-item cc-nc-acao" onClick={() => abrirContato(num)}>
+                <span className="cc-nc-ic" aria-hidden="true">💬</span>
+                <span className="cc-body"><b>Conversar com {formatPhone(num)}</b><span className="cc-prev">Abrir conversa nova por este número</span></span>
+              </button>
+            )}
+            {contatosSemConversa.map((c) => (
+              <ItemContato key={c.id} c={c} onClick={() => abrirContato(c.phone)} dica="Contato salvo · clique para conversar" />
+            ))}
+          </>
+        )}
+        {!buscando && lista !== null && (
+          <button className="cc-carregar cc-nova-rodape" onClick={() => setNova(true)}>✎ Começar nova conversa</button>
         )}
       </div>
     </section>
