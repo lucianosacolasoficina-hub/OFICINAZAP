@@ -22,9 +22,12 @@ export type Limites = {
   massa_min: number;
   /** Respostas da IA na mesma conversa em 10 minutos antes de ela parar e chamar um atendente. */
   robo_10min: number;
+  /** Primeiros contatos (número que nunca escreveu para este número) que o atendente pode iniciar por hora e por dia. */
+  frios_hora: number;
+  frios_dia: number;
 };
 
-export const LIMITES_PADRAO: Limites = { intervalo_seg: 1, massa_contatos: 5, massa_min: 10, robo_10min: 4 };
+export const LIMITES_PADRAO: Limites = { intervalo_seg: 1, massa_contatos: 5, massa_min: 10, robo_10min: 4, frios_hora: 5, frios_dia: 20 };
 
 const lim = (n: unknown, min: number, max: number, padrao: number) => {
   const v = Math.round(Number(n));
@@ -37,6 +40,8 @@ export function normalizaLimites(v: Partial<Limites> | null | undefined): Limite
     massa_contatos: lim(v?.massa_contatos, 2, 100, p.massa_contatos),
     massa_min: lim(v?.massa_min, 1, 24 * 60, p.massa_min),
     robo_10min: lim(v?.robo_10min, 1, 30, p.robo_10min),
+    frios_hora: lim(v?.frios_hora, 1, 100, p.frios_hora),
+    frios_dia: lim(v?.frios_dia, 1, 300, p.frios_dia),
   };
 }
 
@@ -226,4 +231,44 @@ export function comTrava(p: WhatsAppProvider, instance: string): WhatsAppProvide
         enviarComTrava(instance, phone, `editar|${msg.id}|${text}`, () => p.editText!(phone, msg, text)),
     }),
   }) as WhatsAppProvider;
+}
+
+// Primeiro contato: o atendente começa conversa com um número que nunca escreveu para este número da empresa.
+// Muitos desses em pouco tempo é o que o WhatsApp mais pune (parece prospecção em massa / spam), então há limite
+// por hora e por dia em cada número. Responder quem já falou com a gente continua livre.
+type Frio = { t: number; p: string };
+async function lerFrios(): Promise<Record<string, Frio[]>> {
+  return getSetting<Record<string, Frio[]>>("trava_frios", {}).catch(() => ({}));
+}
+/** Quantos primeiros contatos este número já iniciou na última hora e nas últimas 24 horas. */
+export async function contagemFrios(connId: string) {
+  const agora = Date.now();
+  const lista = ((await lerFrios())[connId] ?? []).filter((f) => agora - f.t < 86_400_000);
+  const l = await getLimites();
+  return { hora: lista.filter((f) => agora - f.t < 3_600_000).length, dia: lista.length, max_hora: l.frios_hora, max_dia: l.frios_dia };
+}
+/** Libera (e anota) um primeiro contato por este número, ou barra com a explicação se passou do limite. */
+export async function liberarPrimeiroContato(instance: string, connId: string, phone: string) {
+  const l = await getLimites();
+  const todos = await lerFrios();
+  const agora = Date.now();
+  const lista = (todos[connId] ?? []).filter((f) => agora - f.t < 86_400_000);
+  // O mesmo número aberto de novo (ainda sem resposta) não conta outra vez.
+  if (lista.some((f) => f.p === phone)) return;
+  const naHora = lista.filter((f) => agora - f.t < 3_600_000).length;
+  if (naHora >= l.frios_hora || lista.length >= l.frios_dia) {
+    const porHora = naHora >= l.frios_hora;
+    await avisarMaster(instance, `Primeiro contato barrado: ${porHora ? `${naHora} números novos na última hora` : `${lista.length} números novos em 24 horas`} (proteção contra banimento)`);
+    throw new HttpError(
+      429,
+      porHora
+        ? `Este número já começou conversa com ${naHora} contatos que nunca falaram com a empresa na última hora (limite ${l.frios_hora}). Puxar muitos números novos em pouco tempo é o que mais leva o WhatsApp a bloquear a conta. Aguarde um pouco ou use outro número.`
+        : `Este número já começou conversa com ${lista.length} contatos novos nas últimas 24 horas (limite ${l.frios_dia}). Para proteger o WhatsApp contra bloqueio, novos primeiros contatos voltam amanhã. Clientes que já conversaram com a empresa continuam livres.`,
+    );
+  }
+  lista.push({ t: agora, p: phone });
+  // Guarda só as últimas 24 horas de cada número.
+  for (const k of Object.keys(todos)) todos[k] = todos[k].filter((f) => agora - f.t < 86_400_000);
+  todos[connId] = lista;
+  await setSetting("trava_frios", todos);
 }

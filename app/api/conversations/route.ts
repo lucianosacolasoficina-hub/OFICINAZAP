@@ -4,6 +4,19 @@ import { activeConversation, updateConversation, upsertContact } from "@/lib/db"
 import { applyFilter, LIST_SELECT, loadLookups, parseFilter } from "@/lib/inbox";
 import { canaisDe, getAgent } from "@/lib/perms";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { liberarPrimeiroContato } from "@/lib/whatsapp/trava";
+
+/** O contato já escreveu alguma vez para este número? (Se nunca escreveu, iniciar conversa é "primeiro contato".) */
+async function jaFalouComANumero(phone: string, connectionId: string) {
+  const db = supabaseAdmin();
+  const { data: ct } = await db.from("contacts").select("id").eq("phone", phone).maybeSingle();
+  if (!ct) return false;
+  const { data: convs } = await db.from("conversations").select("id").eq("contact_id", ct.id).eq("connection_id", connectionId).limit(200);
+  const ids = (convs ?? []).map((c) => c.id as string);
+  if (!ids.length) return false;
+  const { count } = await db.from("messages").select("id", { count: "exact", head: true }).in("conversation_id", ids).eq("direction", "in").limit(1);
+  return (count ?? 0) > 0;
+}
 
 export const GET = route(async (req, _ctx, userId) => {
   const sp = new URL(req.url).searchParams;
@@ -51,6 +64,10 @@ export const POST = route(async (req, _ctx, userId) => {
   const connection = body.connection_id ? await getConnection(body.connection_id) : null;
   if (body.connection_id && !connection) throw new HttpError(404, "número de WhatsApp não encontrado");
 
+  // Proteção contra banimento: número que nunca falou com este WhatsApp tem limite por hora e por dia.
+  if (connection && (!connection.channel || connection.channel === "whatsapp") && !(await jaFalouComANumero(phone, connection.id))) {
+    await liberarPrimeiroContato(connection.instance, connection.id, phone);
+  }
   const contact = await upsertContact(phone, body.name?.trim() || undefined);
   const conversation = await activeConversation(contact.id, false, connection);
   // Conversa que já está com outro atendente só abre (não é tirada dele); senão fica com quem iniciou.

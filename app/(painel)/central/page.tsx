@@ -91,6 +91,11 @@ function NovaConversa({ conn, onFechar, onAbrir }: { conn: Conn; onFechar: () =>
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
   const LIM = 60;
+  // Proteção contra banimento: quantos primeiros contatos este número já fez (limite por hora e por dia).
+  const [frios, setFrios] = useState<{ hora: number; dia: number; max_hora: number; max_dia: number } | null>(null);
+  useEffect(() => {
+    api<{ hora: number; dia: number; max_hora: number; max_dia: number }>(`/api/trava?frios=${conn.id}`).then(setFrios).catch(() => {});
+  }, [conn.id]);
 
   const ler = useCallback(
     (offset: number) => {
@@ -151,6 +156,11 @@ function NovaConversa({ conn, onFechar, onAbrir }: { conn: Conn; onFechar: () =>
       </header>
       {!conn.connected_at && <p className="cc-alerta" style={{ padding: "6px 12px" }}>Este número está desconectado: a mensagem só sai quando ele voltar.</p>}
       {erro && <p className="cc-alerta" style={{ padding: "6px 12px" }}>{erro}</p>}
+      {frios && (
+        <p className={`cc-nc-trava${frios.hora >= frios.max_hora || frios.dia >= frios.max_dia ? " cheio" : ""}`}>
+          🛡️ Proteção da conta: chamar quem <b>nunca falou</b> com este número conta como primeiro contato. Hoje: <b>{frios.dia} de {frios.max_dia}</b> (até {frios.max_hora} por hora). Clientes que já conversaram são livres. Não mande a mesma mensagem para vários números novos.
+        </p>
+      )}
       {novo ? (
         <form
           className="cc-nc-form"
@@ -183,7 +193,7 @@ function NovaConversa({ conn, onFechar, onAbrir }: { conn: Conn; onFechar: () =>
             {num && !numJaSalvo && (
               <button className="cc-item cc-nc-acao" onClick={() => abrir(num)} disabled={busy}>
                 <span className="cc-nc-ic" aria-hidden="true">💬</span>
-                <span className="cc-body"><b>Conversar com {formatPhone(num)}</b><span className="cc-prev">Número fora dos contatos: abre a conversa sem salvar nome</span></span>
+                <span className="cc-body"><b>Conversar com {formatPhone(num)}</b><span className="cc-prev">Número novo: conta como primeiro contato (proteção da conta)</span></span>
               </button>
             )}
             <p className="cc-sec">Contatos{q.trim() ? " encontrados" : ""}</p>
