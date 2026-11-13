@@ -217,6 +217,10 @@ export function comTrava(p: WhatsAppProvider, instance: string): WhatsAppProvide
     ...(p.sendAudio && {
       sendAudio: (phone: string, file: MediaFile, citar?: Citacao) => enviarComTrava(instance, phone, file.data, () => p.sendAudio!(phone, file, citar)),
     }),
+    ...(p.sendPoll && {
+      sendPoll: (phone: string, pergunta: string, opcoes: string[], varias: boolean) =>
+        enviarComTrava(instance, phone, `enquete|${pergunta}|${opcoes.join("|")}`, () => p.sendPoll!(phone, pergunta, opcoes, varias)),
+    }),
     // Reação e edição também esperam a vez na fila do número (nada sai em rajada).
     ...(p.sendReaction && {
       sendReaction: (msg: Omit<Citacao, "text">, emoji: string) =>

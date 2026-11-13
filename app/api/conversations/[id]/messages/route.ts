@@ -184,10 +184,15 @@ function nomeArquivo(nome: string | undefined, mime: string) {
 // Só as mensagens novas desde `after` (a tela pergunta a cada poucos segundos, sem baixar tudo de novo).
 export const GET = route<IdCtx>(async (req, { params }) => {
   const { id } = await params;
-  const after = new URL(req.url).searchParams.get("after");
+  const sp = new URL(req.url).searchParams;
+  const after = sp.get("after");
+  // st: também as mensagens cujo tracinho (entregue / lida) mudou depois deste horário.
+  const st = sp.get("st");
   const ids = await threadIds(id);
   let q = supabaseAdmin().from("messages").select("*").in("conversation_id", ids).order("created_at", { ascending: true }).limit(200);
-  if (after) q = q.gt("created_at", after);
+  const iso = (v: string) => (Number.isFinite(new Date(v).getTime()) ? new Date(v).toISOString() : null);
+  if (after && st && iso(after) && iso(st)) q = q.or(`created_at.gt.${iso(after)},entrega_em.gt.${iso(st)}`);
+  else if (after) q = q.gt("created_at", after);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return data ?? [];

@@ -25,9 +25,11 @@ export const GET = route(async (req, _ctx, userId) => {
   const limit = Math.min(Math.max(Number(sp.get("limit")) || 150, 1), 500);
   const offset = Math.max(Number(sp.get("offset")) || 0, 0);
   const lookups = await loadLookups(userId, filter.stage ? [filter.stage] : [], filter.search);
-  const query = supabaseAdmin()
-    .from("conversations")
-    .select(LIST_SELECT)
+  const fixadasNoTopo = filter.view !== "atrasadas" && filter.view !== "retomar";
+  let query = supabaseAdmin().from("conversations").select(LIST_SELECT);
+  // Conversas fixadas (📌) ficam no topo, como no WhatsApp.
+  if (fixadasNoTopo) query = query.order("fixada_em", { ascending: false, nullsFirst: false });
+  query = query
     // Quem espera há mais tempo aparece primeiro no alerta; em "Retomar", o orçamento mais antigo primeiro.
     .order(filter.view === "atrasadas" ? "waiting_since" : "last_message_at", { ascending: filter.view === "atrasadas" || filter.view === "retomar" })
     .order("id")

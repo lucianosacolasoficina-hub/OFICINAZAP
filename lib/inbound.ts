@@ -24,6 +24,7 @@ import { transcreverMensagem, transcricaoLigada } from "./transcrever";
 import { whatsapp, type IncomingMessage } from "./whatsapp";
 import { avisarMaster, getLimites } from "./whatsapp/trava";
 import { supabaseAdmin } from "./supabase/admin";
+import { respostaAutomatica } from "./ausencia";
 
 // Espera o cliente terminar de digitar várias mensagens seguidas antes de a IA responder.
 const DEBOUNCE_MS = Number(process.env.AI_DEBOUNCE_MS ?? 4000);
@@ -74,6 +75,17 @@ export async function handleIncoming(msg: IncomingMessage, opts: { robo?: boolea
     } catch (err) {
       console.error("Falha ao baixar mídia", msg.waMessageId, err);
     }
+  }
+
+  // Mensagem de ausência (fora do horário) ou de saudação (cliente novo), como no WhatsApp Business.
+  if (!msg.isGroup && opts.robo !== false && !(await ehNumeroDaEmpresa(contact.phone))) {
+    await respostaAutomatica({
+      contact,
+      conversation,
+      instance,
+      mensagemId: saved.id,
+      iaVaiResponder: conversation.status === "bot" && botEnabled,
+    }).catch((err) => console.error("Falha na mensagem automática", err));
   }
 
   if (conversation.status !== "bot" || !botEnabled) return;

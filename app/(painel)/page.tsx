@@ -8,6 +8,7 @@ import { notificar } from "@/lib/notificar";
 import { msgCadastro } from "@/lib/cadastroMsg";
 import { HistoricoPedidos } from "@/components/HistoricoPedidos";
 import { EtapasCrm, type Etapa } from "@/components/EtapasCrm";
+import { AgendadasFaixa, AgendarPop, EnquetePop, PixPop, Tracinhos } from "@/components/ZapExtras";
 import {
   atalhoFormato,
   CatalogoPop,
@@ -332,13 +333,17 @@ export default function InboxPage() {
     const d = detailRef.current;
     if (!selected || !d || d.conversation.id !== selected) return;
     const last = d.messages[d.messages.length - 1]?.created_at;
-    const novos = await api<Message[]>(`/api/conversations/${selected}/messages${last ? `?after=${encodeURIComponent(last)}` : ""}`);
+    // st: tracinhos (entregue / lida) que mudaram depois do último já visto.
+    const st = d.messages.reduce((mx, m) => (m.entrega_em && m.entrega_em > mx ? m.entrega_em : mx), last ?? "");
+    const qs = last ? `?after=${encodeURIComponent(last)}${st ? `&st=${encodeURIComponent(st)}` : ""}` : "";
+    const novos = await api<Message[]>(`/api/conversations/${selected}/messages${qs}`);
     if (!novos.length) return;
-    setDetail((cur) =>
-      cur && cur.conversation.id === selected
-        ? { ...cur, messages: [...cur.messages, ...novos.filter((n) => !cur.messages.some((m) => m.id === n.id))] }
-        : cur,
-    );
+    setDetail((cur) => {
+      if (!cur || cur.conversation.id !== selected) return cur;
+      const porId = new Map(novos.map((n) => [n.id, n]));
+      const atualizadas = cur.messages.map((m) => porId.get(m.id) ?? m);
+      return { ...cur, messages: [...atualizadas, ...novos.filter((n) => !cur.messages.some((m) => m.id === n.id))] };
+    });
   }, [selected]);
 
   useEffect(() => {
@@ -894,6 +899,7 @@ function ConversationItem({ c, me, on, onClick, arrastar, mostrarNumero, lateMin
       <div className="ib-item-body">
         <div className="ib-line">
           <span className="name">{name}</span>
+          {c.fixada_em && <span className="ib-pin" title="Conversa fixada no topo">📌</span>}
           <span className="time">{formatListTime(c.last_message_at)}</span>
           {c.unread_count > 0 && <span className="ib-unread">{c.unread_count > 99 ? "99+" : c.unread_count}</span>}
         </div>
@@ -1151,6 +1157,17 @@ function Chat({
   const [editando, setEditando] = useState<Message | null>(null);
   const [etqOpen, setEtqOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
+  // ➕ Mais: agendar mensagem, cobrar com Pix, enquete.
+  const [extra, setExtra] = useState<null | "menu" | "agendar" | "pix" | "enquete">(null);
+  const [agVersao, setAgVersao] = useState(0);
+  useEffect(() => setExtra(null), [c.id]);
+  // "digitando…" no WhatsApp do cliente enquanto o atendente escreve (no máximo a cada 8 s).
+  const digitouEm = useRef(0);
+  function avisarDigitando() {
+    if (c.contact.is_group || /^(ig|fb|mail):/.test(String(c.contact.phone)) || Date.now() - digitouEm.current < 8000) return;
+    digitouEm.current = Date.now();
+    void api(`/api/conversations/${c.id}/digitando`, { method: "POST" }).catch(() => {});
+  }
   const [arrastando, setArrastando] = useState(false);
   const [aviso, setAviso] = useState("");
   const grav = useGravador();
@@ -1593,6 +1610,13 @@ function Chat({
                     }}
                   >📌 Criar tarefa desta conversa</button>
                 )}
+                <button
+                  onClick={async () => {
+                    setAcoes(false);
+                    await api(`/api/conversations/${c.id}`, { method: "PATCH", body: JSON.stringify({ fixar: !c.fixada_em }) }).catch((err) => alert(err.message));
+                    await onSent();
+                  }}
+                >{c.fixada_em ? "📌 Desafixar do topo" : "📌 Fixar no topo da lista"}</button>
                 {c.status !== "bot" && c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("bot"); }}>🤖 Devolver para a IA</button>}
                 {c.status !== "closed" && <button onClick={() => { setAcoes(false); onStatus("closed"); }}>✅ Encerrar conversa</button>}
                 {c.status === "closed" && <button onClick={() => { setAcoes(false); onStatus("open"); }}>↩ Reabrir e assumir</button>}
@@ -1781,12 +1805,13 @@ function Chat({
                   );
                 })()}
                 {/* Espaço reservado no fim do texto para o horário (que fica no canto de baixo). */}
-                <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}${m.favorita || m.editada ? " mais" : ""}`} />
+                <span className={`meta-sp ${m.sender === "bot" ? "wide" : ""}${m.favorita || m.editada ? " mais" : ""}${m.direction === "out" && m.entrega ? " tique" : ""}`} />
                 <span className="meta">
                   {m.favorita && <span title="Favoritada">⭐ </span>}
                   {m.editada && <span title="Mensagem editada depois de enviada">editada · </span>}
                   {m.sender === "bot" ? "🤖 IA · " : ""}
                   {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  <Tracinhos m={m} />
                 </span>
                 {!apagada && (m.reacoes?.nos || m.reacoes?.cliente) && (
                   <span className="zx-reacoes" title={[m.reacoes?.cliente && `${c.contact.name || "Cliente"}: ${m.reacoes.cliente}`, m.reacoes?.nos && `Você: ${m.reacoes.nos}`].filter(Boolean).join(" · ")}>
@@ -1920,6 +1945,50 @@ function Chat({
           )}
           {emojiOpen && <EmojiPicker className="zx-emoji-caixa" onPick={porEmoji} onClose={() => setEmojiOpen(false)} />}
           {catOpen && <CatalogoPop podeEditar={!!me?.perms.configuracoes} onUsar={usarProduto} onClose={() => setCatOpen(false)} />}
+          <AgendadasFaixa convId={c.id} versao={agVersao} />
+          {extra === "menu" && (
+            <div className="zx-cat zx-extra zx-mais" role="menu" onClick={(e) => e.stopPropagation()}>
+              <div className="zx-h">
+                Mais
+                <button type="button" onClick={() => setExtra(null)} aria-label="Fechar">×</button>
+              </div>
+              <button type="button" role="menuitem" onClick={() => setExtra("agendar")}>⏰ Agendar mensagem<small>sai sozinha no dia e na hora</small></button>
+              <button type="button" role="menuitem" onClick={() => setExtra("pix")}>💰 Cobrar com Pix<small>chave da loja e código copia e cola com o valor</small></button>
+              {zapCanal && <button type="button" role="menuitem" onClick={() => setExtra("enquete")}>📊 Enquete<small>o cliente vota tocando nas opções</small></button>}
+            </div>
+          )}
+          {extra === "agendar" && (
+            <AgendarPop
+              convId={c.id}
+              texto={text}
+              onClose={() => setExtra(null)}
+              onDone={() => {
+                setExtra(null);
+                setText("");
+                setAgVersao((v) => v + 1);
+              }}
+            />
+          )}
+          {extra === "pix" && (
+            <PixPop
+              convId={c.id}
+              onClose={() => setExtra(null)}
+              onEnviado={async () => {
+                setExtra(null);
+                await onSent();
+              }}
+            />
+          )}
+          {extra === "enquete" && (
+            <EnquetePop
+              convId={c.id}
+              onClose={() => setExtra(null)}
+              onDone={async () => {
+                setExtra(null);
+                await onSent();
+              }}
+            />
+          )}
           {fmtOpen && !grav.gravando && (
             <span className="zx-fmt" onMouseDown={(e) => e.preventDefault()}>
               {([["*", <b key="b">N</b>, "Negrito (Ctrl+B)"], ["_", <i key="i">I</i>, "Itálico (Ctrl+I)"], ["~", <s key="s">R</s>, "Riscado (Ctrl+Shift+X)"], ["```", <code key="m">{"</>"}</code>, "Monoespaçado (Ctrl+Shift+M)"]] as const).map(([mk, ic, t]) => (
@@ -1971,6 +2040,16 @@ function Chat({
           )}
           <button type="button" className={`qr-btn zx-ic zx-aa${fmtOpen ? " on" : ""}`} title="Negrito, itálico, riscado" aria-label="Formatar texto" onClick={() => setFmtOpen((v) => !v)}>
             Aa
+          </button>
+          <button
+            type="button"
+            className={`qr-btn zx-ic${extra ? " on" : ""}`}
+            title="Mais: agendar mensagem, cobrar com Pix, enquete"
+            aria-label="Mais opções"
+            onClick={(e) => { e.stopPropagation(); setExtra((v) => (v ? null : "menu")); setCatOpen(false); setEmojiOpen(false); }}
+            disabled={!!editando}
+          >
+            ＋
           </button>
           <input
             ref={fotoInput}
@@ -2038,6 +2117,7 @@ function Chat({
             onChange={(e) => {
               setText(e.target.value);
               setQrIndex(0);
+              if (e.target.value.trim() && !e.target.value.startsWith("/")) avisarDigitando();
             }}
             onKeyDown={onKey}
             onPaste={onPaste}
