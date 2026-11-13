@@ -1124,3 +1124,5 @@ button.cc-item.cc-nc-acao { align-items: center; }
 .cc-nc-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
 .cc-nc-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .cc-nova-rodape { color: var(--brand); }
+.cc-nc-trava { margin: 0; padding: 7px 12px; font-size: 12px; line-height: 1.4; background: #fffbeb; color: #78350f; border-bottom: 1px solid #fde68a; }
+.cc-nc-trava.cheio { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
