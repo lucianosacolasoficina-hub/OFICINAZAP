@@ -116,7 +116,7 @@ export function PixPop({ convId, onEnviado, onClose }: { convId: string; onEnvia
     setErro("");
     try {
       await api(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body: prev.texto }) });
-      await api(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body: prev.codigo }) });
+      if (prev.codigo) await api(`/api/conversations/${convId}/messages`, { method: "POST", body: JSON.stringify({ body: prev.codigo }) });
       onEnviado();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não consegui enviar");
@@ -140,15 +140,15 @@ export function PixPop({ convId, onEnviado, onClose }: { convId: string; onEnvia
             Referente a (opcional)
             <input placeholder="ex.: Pedido 1234 - sinal" maxLength={60} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
           </label>
-          <small className="pd-dica">Vai com a chave da loja e o código Pix copia e cola, com o valor já preenchido. Você confere antes de enviar.</small>
+          <small className="pd-dica">Vai com a chave da loja (BRA). Com valor, vai também o código Pix copia e cola já preenchido. Sem valor, sai só a chave. Você confere antes de enviar.</small>
           {erro && <small className="zx-erro">{erro}</small>}
-          <button className="primary" disabled={busy}>{busy ? "Montando…" : "Ver a cobrança"}</button>
+          <button className="primary" disabled={busy}>{busy ? "Montando…" : valor.trim() ? "Ver a cobrança" : "Ver mensagem com a chave"}</button>
         </>
       ) : (
         <>
           <div className="zx-pix-prev">{prev.texto}</div>
-          <div className="zx-pix-prev zx-pix-cod">{prev.codigo}</div>
-          <small className="pd-dica">Saem 2 mensagens: a cobrança e o código sozinho (o cliente toca e copia no celular).</small>
+          {prev.codigo && <div className="zx-pix-prev zx-pix-cod">{prev.codigo}</div>}
+          <small className="pd-dica">{prev.codigo ? "Saem 2 mensagens: a cobrança e o código sozinho (o cliente toca e copia no celular)." : "Sai só a chave Pix da loja. Com valor, vai também o código copia e cola."}</small>
           {erro && <small className="zx-erro">{erro}</small>}
           <div className="row" style={{ gap: 8 }}>
             <button type="button" onClick={() => setPrev(null)} disabled={busy}>Voltar</button>

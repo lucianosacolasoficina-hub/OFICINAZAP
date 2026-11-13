@@ -84,14 +84,24 @@ export function pixCopiaECola(cfg: Pix, valor?: number, descricao?: string) {
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const NOME_TIPO: Record<Pix["tipo"], string> = { cpf: "CPF", cnpj: "CNPJ", telefone: "Telefone", email: "E-mail", aleatoria: "Chave aleatória" };
 
-/** Mensagem da cobrança e, à parte, o código copia e cola (sozinho, para o cliente copiar fácil no celular). */
+/** Chave como o cliente lê: CNPJ e CPF com pontos e traço. */
+function chaveLegivel(cfg: Pix) {
+  const d = cfg.chave;
+  if (cfg.tipo === "cnpj" && d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (cfg.tipo === "cpf" && d.length === 11) return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return d;
+}
+
+/**
+ * Mensagem da cobrança (no mesmo jeito das mensagens que a loja já manda) e, à parte, o código copia e cola
+ * sozinho, para o cliente copiar fácil no celular. Sem valor: só a chave (codigo vazio).
+ */
 export function textoCobranca(cfg: Pix, valor?: number, descricao?: string) {
-  const linhas = ["💰 *Pagamento via Pix*"];
-  if (descricao) linhas.push(`Referente a: ${descricao}`);
-  if (valor && valor > 0) linhas.push(`Valor: *${brl(valor)}*`);
-  linhas.push(`Chave (${NOME_TIPO[cfg.tipo]}): ${cfg.chave}`);
-  if (cfg.nome) linhas.push(`Favorecido: ${cfg.nome}`);
-  linhas.push("", "O código *Pix copia e cola* vem na próxima mensagem 👇 É só copiar e colar no app do seu banco, na opção Pix Copia e Cola.");
-  linhas.push("Depois de pagar, mande o comprovante aqui, por favor 🙏");
-  return { texto: linhas.join("\n"), codigo: pixCopiaECola(cfg, valor, descricao) };
+  const linhas: string[] = [];
+  if (descricao) linhas.push(`*${descricao}*`);
+  if (valor && valor > 0) linhas.push(`*Valor a pagar: ${brl(valor)}*`, "");
+  linhas.push(`🏦 ${cfg.nome || "Pix"}`, `🔑 Chave PIX (${NOME_TIPO[cfg.tipo]}): ${chaveLegivel(cfg)}`);
+  if (valor && valor > 0) linhas.push("", "O código *PIX copia e cola* vem na próxima mensagem 👇 (já com o valor).");
+  linhas.push("", "Após o pagamento, se possível, encaminhe o comprovante para conferência.", "", "Agradecemos!");
+  return { texto: linhas.join("\n"), codigo: valor && valor > 0 ? pixCopiaECola(cfg, valor, descricao) : "" };
 }
