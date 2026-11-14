@@ -27,6 +27,7 @@ export async function POST(req: Request) {
   const email = await emailDaGestao(token);
   if (!email) return resp(req, { error: "sessão do sistema inválida" }, 401);
   const b = (await req.json().catch(() => ({}))) as { col?: string; id?: string; tipo?: string };
+  if (b.tipo === "mudanca") return avisarMudanca(req, email, token, String(b.id ?? ""));
   const col = b.col === "orcamentos" ? "orcamentos" : b.col === "pedidos" ? "pedidos" : "";
   const id = String(b.id ?? "");
   if (!col || !/^[A-Za-z0-9_-]{3,60}$/.test(id)) return resp(req, { error: "documento inválido" }, 400);
@@ -57,6 +58,35 @@ export async function POST(req: Request) {
     `Liberar ou recusar: ${SITE}/#libpreco-${col === "pedidos" ? "p" : "o"}-${id}`,
   ].filter((x) => x !== "").join("\n");
 
+  return enviar(req, email, para, de, texto, chave);
+}
+
+// Pedido de mudança no sistema (botão 💡 Pedir mudança): avisa o dono quando alguém da equipe envia um pedido novo.
+// O texto sai do próprio pedido gravado no banco (lido com a sessão de quem enviou); nada de texto livre vindo do navegador.
+const TIPO_MUD: Record<string, string> = { erro: "🐞 Erro", melhoria: "✨ Melhoria", duvida: "❓ Dúvida" };
+async function avisarMudanca(req: Request, email: string, token: string, id: string) {
+  if (!/^[0-9a-fA-F-]{36}$/.test(id)) return resp(req, { error: "pedido inválido" }, 400);
+  const url = (process.env.GESTAO_SUPABASE_URL || "").replace(/\/+$/, ""), anon = process.env.GESTAO_SUPABASE_ANON_KEY || "";
+  const r = await fetch(`${url}/rest/v1/pedidos_mudanca?id=eq.${id}&select=numero,autor_nome,tipo,prioridade,setor,tela,titulo,descricao,status,criado_em`, { headers: { apikey: anon, Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => null);
+  const rows = r?.ok ? ((await r.json().catch(() => [])) as any[]) : [];
+  const d = rows[0];
+  if (!d) return resp(req, { enviado: false, motivo: "pedido não encontrado" });
+  const quando = Date.parse(d.criado_em || "") || 0;
+  if (d.status !== "novo" || !quando || Date.now() - quando > 30 * 60_000) return resp(req, { enviado: false, motivo: "pedido antigo" });
+  const chave = `mud:${id}`;
+  if ((enviados.get(chave) ?? 0) > Date.now() - 10 * 60_000) return resp(req, { enviado: false, motivo: "aviso já enviado" });
+  enviados.set(chave, Date.now());
+  const cfg = await getSetting<{ para?: string; de?: string }>("aviso_dono", PADRAO).catch(() => PADRAO);
+  const para = String(cfg?.para || PADRAO.para).replace(/\D/g, ""), de = String(cfg?.de || PADRAO.de).replace(/\D/g, "");
+  const urg = d.prioridade === "urgente" ? " · *URGENTE*" : d.prioridade === "baixa" ? " · pode esperar" : "";
+  const texto = [
+    `💡 *Pedido de mudança nº ${corta(d.numero, 8)}* · ${TIPO_MUD[d.tipo] || "✨ Melhoria"}${urg}`,
+    `De: ${corta(d.autor_nome, 40)} · ${corta(d.setor, 40)}${d.tela && d.tela !== d.setor ? " › " + corta(d.tela, 60) : ""}`,
+    `Resumo: *${corta(d.titulo, 140)}*`,
+    d.descricao ? `Detalhe: ${corta(d.descricao, 350)}` : "",
+    "",
+    `Ver o print e responder: ${SITE}/#mudancas`,
+  ].filter((x) => x !== "").join("\n");
   return enviar(req, email, para, de, texto, chave);
 }
 
