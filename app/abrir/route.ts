@@ -16,7 +16,9 @@ export async function GET(req: Request) {
   if (!(await currentUser())) return NextResponse.redirect(publicUrl(req, "/login"));
   const q = new URLSearchParams();
   if (r) q.set("r", r);
-  if (!tel) return NextResponse.redirect(publicUrl(req, r ? `/?${q}` : "/"));
+  // embed=1: conversa aberta num painel dentro do sistema de gestão (só a conversa, sem a lista).
+  if (u.searchParams.get("embed") === "1") q.set("embed", "1");
+  if (!tel) return NextResponse.redirect(publicUrl(req, q.toString() ? `/?${q}` : "/"));
   const db = supabaseAdmin();
   const { data: cts } = await db.from("contacts").select("id").in("phone", phoneVariants(tel)).eq("is_group", false);
   const ids = (cts ?? []).map((c) => c.id as string);

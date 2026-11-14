@@ -17,6 +17,8 @@ export async function POST(req: Request) {
   const v = String(form?.get("v") ?? "").replace(/[^a-z]/g, "").slice(0, 20);
   const tel = String(form?.get("tel") ?? "").replace(/\D/g, "").slice(0, 15);
   const nome = String(form?.get("nome") ?? "").slice(0, 80);
+  // embed=1: o sistema abriu a conversa num painel dentro dele (só a conversa, sem a lista).
+  const embed = String(form?.get("embed") ?? "") === "1";
   // Rascunho (texto + PDF) que o sistema deixou em /api/rascunhos para enviar nesta conversa.
   const rasc = String(form?.get("r") ?? "").replace(/[^0-9a-f-]/g, "").slice(0, 36);
   if (!token) return volta(req, "sessao");
@@ -44,7 +46,8 @@ export async function POST(req: Request) {
   if (e2) return volta(req, "indisponivel");
   const abrir = new URLSearchParams({ tel, nome });
   if (rasc) abrir.set("r", rasc);
-  const destino = tel || rasc ? `/abrir?${abrir}` : v ? `/?v=${v}` : "/";
+  if (embed) abrir.set("embed", "1");
+  const destino = tel || rasc ? `/abrir?${abrir}` : embed ? "/?embed=1" : v ? `/?v=${v}` : "/";
   return NextResponse.redirect(publicUrl(req, destino), { status: 303 });
 }
 
@@ -59,8 +62,10 @@ export async function GET(req: Request) {
   const tel = (u.get("tel") ?? "").replace(/\D/g, "").slice(0, 15);
   const nome = (u.get("nome") ?? "").slice(0, 80);
   const rasc = (u.get("r") ?? "").replace(/[^0-9a-f-]/g, "").slice(0, 36);
+  const embed = u.get("embed") === "1";
   const abrir = new URLSearchParams({ tel, nome });
   if (rasc) abrir.set("r", rasc);
-  const destino = tel || rasc ? `/abrir?${abrir}` : v ? `/?v=${v}` : "/";
+  if (embed) abrir.set("embed", "1");
+  const destino = tel || rasc ? `/abrir?${abrir}` : embed ? "/?embed=1" : v ? `/?v=${v}` : "/";
   return NextResponse.redirect(publicUrl(req, destino), { status: 303 });
 }
